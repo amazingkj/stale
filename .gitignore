@@ -1,0 +1,66 @@
+# Build outputs
+/build/
+/stale
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go
+vendor/
+go.work
+go.work.sum
+
+# Frontend
+/ui/node_modules/
+/ui/dist/
+/ui/.vite/
+*.tsbuildinfo
+
+# Database
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+._*
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Test coverage
+coverage.out
+coverage.html
+*.cover
+*.test
+
+# Temporary files
+tmp/
+*.tmp
+*.temp
+*.log
+
+# Docker
+*.tar
+
+# Secrets (never commit)
+*.pem
+*.key
+*_rsa
+*_ed25519
+credentials.json
+secrets.json
