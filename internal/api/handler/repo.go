@@ -105,3 +105,39 @@ func (h *RepoHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids"`
+}
+
+func (h *RepoHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {
+	var req BulkDeleteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.IDs) == 0 {
+		http.Error(w, "no ids provided", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	var deleted int
+
+	for _, id := range req.IDs {
+		// Delete dependencies first
+		if err := h.depRepo.DeleteByRepoID(ctx, id); err != nil {
+			continue
+		}
+
+		// Delete repository
+		if err := h.repo.Delete(ctx, id); err != nil {
+			continue
+		}
+		deleted++
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]int{"deleted": deleted})
+}

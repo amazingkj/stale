@@ -47,6 +47,11 @@ export const api = {
     request<Dependency[]>(`/repositories/${id}/dependencies`),
   deleteRepository: (id: number) =>
     request<void>(`/repositories/${id}`, { method: 'DELETE' }),
+  bulkDeleteRepositories: (ids: number[]) =>
+    request<{ deleted: number }>('/repositories/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
 
   // Dependencies
   getDependencies: (upgradableOnly?: boolean) => {

@@ -65,6 +65,7 @@ func NewRouter(
 
 		r.Route("/repositories", func(r chi.Router) {
 			r.Get("/", repoHandler.List)
+			r.Post("/bulk-delete", repoHandler.BulkDelete)
 			r.Get("/{id}", repoHandler.Get)
 			r.Get("/{id}/dependencies", repoHandler.GetDependencies)
 			r.Delete("/{id}", repoHandler.Delete)

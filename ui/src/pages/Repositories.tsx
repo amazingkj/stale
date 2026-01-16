@@ -23,6 +23,8 @@ export function Repositories() {
   const [selectedSource, setSelectedSource] = useState<number | undefined>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const loadSources = useCallback(async () => {
     try {
@@ -65,14 +67,62 @@ export function Repositories() {
 
   const handleSourceChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedSource(e.target.value ? Number(e.target.value) : undefined);
+    setSelectedIds(new Set()); // Clear selection when source changes
   }, []);
+
+  const handleSelectAll = useCallback((checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(repositories.map(r => r.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  }, [repositories]);
+
+  const handleSelectOne = useCallback((id: number, checked: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Remove ${selectedIds.size} repositories from dashboard?\n(This will not delete the actual repositories)`)) return;
+
+    setDeleting(true);
+    try {
+      await api.bulkDeleteRepositories(Array.from(selectedIds));
+      setRepositories(prev => prev.filter(r => !selectedIds.has(r.id)));
+      setSelectedIds(new Set());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove repositories');
+    } finally {
+      setDeleting(false);
+    }
+  }, [selectedIds]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px' }}>
         <span style={{ fontSize: '14px', color: 'var(--text-secondary)', marginRight: 'auto' }}>
           {repositories.length} repositories scanned
+          {selectedIds.size > 0 && ` (${selectedIds.size} selected)`}
         </span>
+        {selectedIds.size > 0 && (
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={handleBulkDelete}
+            loading={deleting}
+          >
+            Remove {selectedIds.size} Selected
+          </Button>
+        )}
         <select
           value={selectedSource || ''}
           onChange={handleSourceChange}
@@ -103,8 +153,16 @@ export function Repositories() {
         <Card>
           <Table fixed>
             <TableHead>
-              <Th width="35%">Repository</Th>
-              <Th width="15%">Branch</Th>
+              <Th width="5%">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.size === repositories.length && repositories.length > 0}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                  style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                />
+              </Th>
+              <Th width="33%">Repository</Th>
+              <Th width="12%">Branch</Th>
               <Th width="20%">Manifest</Th>
               <Th width="22%">Last Scanned</Th>
               <Th width="8%"></Th>
@@ -112,6 +170,14 @@ export function Repositories() {
             <TableBody>
               {repositories.map((repo) => (
                 <TableRow key={repo.id}>
+                  <Td>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(repo.id)}
+                      onChange={(e) => handleSelectOne(repo.id, e.target.checked)}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                    />
+                  </Td>
                   <Td>
                     <a
                       href={repo.html_url}
