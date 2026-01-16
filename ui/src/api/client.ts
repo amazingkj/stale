@@ -1,4 +1,4 @@
-import type { Source, SourceInput, Repository, Dependency, ScanJob, DependencyStats, PaginatedDependencies } from '../types';
+import type { Source, SourceInput, Repository, Dependency, ScanJob, DependencyStats, PaginatedDependencies, Settings, SettingsInput, NextScan } from '../types';
 
 const API_BASE = '/api/v1';
 
@@ -89,4 +89,11 @@ export const api = {
   },
   cancelScan: (id: number) =>
     request<void>(`/scans/${id}/cancel`, { method: 'POST' }),
+
+  // Settings
+  getSettings: () => request<Settings>('/settings'),
+  updateSettings: (data: SettingsInput) =>
+    request<Settings>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  testEmail: () => request<{ status: string; message: string }>('/settings/test-email', { method: 'POST' }),
+  getNextScan: () => request<NextScan>('/settings/next-scan'),
 };

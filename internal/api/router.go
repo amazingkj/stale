@@ -12,6 +12,7 @@ import (
 	"github.com/jiin/stale/internal/api/handler"
 	apimiddleware "github.com/jiin/stale/internal/api/middleware"
 	"github.com/jiin/stale/internal/repository"
+	"github.com/jiin/stale/internal/service/email"
 	"github.com/jiin/stale/internal/service/scheduler"
 	"github.com/jiin/stale/ui"
 	"github.com/jmoiron/sqlx"
@@ -20,6 +21,7 @@ import (
 func NewRouter(
 	db *sqlx.DB,
 	scheduler *scheduler.Scheduler,
+	emailService *email.Service,
 ) *chi.Mux {
 	r := chi.NewRouter()
 
@@ -41,6 +43,7 @@ func NewRouter(
 	repoRepo := repository.NewRepoRepository(db)
 	depRepo := repository.NewDependencyRepository(db)
 	scanRepo := repository.NewScanRepository(db)
+	settingsRepo := repository.NewSettingsRepository(db)
 
 	// Handlers
 	healthHandler := handler.NewHealthHandler()
@@ -48,6 +51,7 @@ func NewRouter(
 	repoHandler := handler.NewRepoHandler(repoRepo, depRepo)
 	depHandler := handler.NewDependencyHandler(depRepo)
 	scanHandler := handler.NewScanHandler(scanRepo, scheduler)
+	settingsHandler := handler.NewSettingsHandler(settingsRepo, scheduler, emailService)
 
 	// API routes
 	r.Route("/api/v1", func(r chi.Router) {
@@ -86,6 +90,13 @@ func NewRouter(
 			r.Get("/running", scanHandler.GetRunning)
 			r.Get("/{id}", scanHandler.Get)
 			r.Post("/{id}/cancel", scanHandler.Cancel)
+		})
+
+		r.Route("/settings", func(r chi.Router) {
+			r.Get("/", settingsHandler.Get)
+			r.Put("/", settingsHandler.Update)
+			r.Post("/test-email", settingsHandler.TestEmail)
+			r.Get("/next-scan", settingsHandler.GetNextScan)
 		})
 	})
 

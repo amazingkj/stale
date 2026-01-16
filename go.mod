@@ -7,6 +7,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/google/go-github/v68 v68.0.0
 	github.com/jmoiron/sqlx v1.4.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/zerolog v1.34.0
 	golang.org/x/oauth2 v0.34.0
 	modernc.org/sqlite v1.44.0

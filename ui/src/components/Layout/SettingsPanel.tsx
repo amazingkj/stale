@@ -1,24 +1,38 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import type { Source, SourceInput } from '../../types';
+import type { Source, SourceInput, Settings } from '../../types';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
 }
 
+type SettingsTab = 'sources' | 'schedule' | 'email';
+
 export function SettingsPanel({ isOpen, onClose }: Props) {
+  const [activeTab, setActiveTab] = useState<SettingsTab>('sources');
   const [sources, setSources] = useState<Source[]>([]);
   const [isAddingSource, setIsAddingSource] = useState(false);
   const [editingSource, setEditingSource] = useState<Source | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       loadSources();
+      loadSettings();
     }
   }, [isOpen]);
+
+  async function loadSettings() {
+    try {
+      const data = await api.getSettings();
+      setSettings(data);
+    } catch (err) {
+      console.error('Failed to load settings:', err);
+    }
+  }
 
   async function loadSources() {
     setLoading(true);
@@ -52,6 +66,24 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
     const updated = await api.updateSource(id, input);
     setSources(sources.map((s) => (s.id === id ? updated : s)));
     setEditingSource(null);
+  }
+
+  async function handleSettingsUpdate(updates: Partial<Settings>) {
+    try {
+      const updated = await api.updateSettings(updates);
+      setSettings(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update settings');
+    }
+  }
+
+  async function handleTestEmail() {
+    try {
+      const result = await api.testEmail();
+      alert(result.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send test email');
+    }
   }
 
   if (!isOpen) return null;
@@ -123,131 +155,63 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
           </button>
         </div>
 
+        {/* Tabs */}
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)' }}>
+          {(['sources', 'schedule', 'email'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                flex: 1,
+                padding: '12px',
+                border: 'none',
+                backgroundColor: 'transparent',
+                color: activeTab === tab ? 'var(--accent)' : 'var(--text-secondary)',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                borderBottom: activeTab === tab ? '2px solid var(--accent)' : '2px solid transparent',
+                marginBottom: '-1px',
+              }}
+            >
+              {tab === 'sources' ? 'Sources' : tab === 'schedule' ? 'Schedule' : 'Email'}
+            </button>
+          ))}
+        </div>
+
         {/* Content */}
         <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
-          {/* Sources Section */}
-          <div>
+          {error && (
             <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
+              padding: '12px',
+              borderRadius: '8px',
+              backgroundColor: 'var(--danger-bg)',
+              color: 'var(--danger-text)',
+              fontSize: '13px',
               marginBottom: '16px',
             }}>
-              <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                Git Sources
-              </h3>
-              <button
-                onClick={() => setIsAddingSource(true)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  backgroundColor: 'var(--accent)',
-                  color: 'white',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                + Add
-              </button>
+              {error}
+              <button onClick={() => setError(null)} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}>×</button>
             </div>
+          )}
 
-            {error && (
-              <div style={{
-                padding: '12px',
-                borderRadius: '8px',
-                backgroundColor: 'var(--danger-bg)',
-                color: 'var(--danger-text)',
-                fontSize: '13px',
-                marginBottom: '16px',
-              }}>
-                {error}
-              </div>
-            )}
+          {activeTab === 'sources' && (
+            <SourcesTab
+              sources={sources}
+              loading={loading}
+              onAddSource={() => setIsAddingSource(true)}
+              onEditSource={setEditingSource}
+              onDeleteSource={handleDelete}
+            />
+          )}
 
-            {loading ? (
-              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
-                Loading...
-              </div>
-            ) : sources.length === 0 ? (
-              <div style={{
-                padding: '32px 16px',
-                textAlign: 'center',
-                backgroundColor: 'var(--bg-primary)',
-                borderRadius: '8px',
-                border: '1px solid var(--border-color)',
-              }}>
-                <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔗</div>
-                <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: 0 }}>
-                  No sources configured yet
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {sources.map((source) => (
-                  <div
-                    key={source.id}
-                    style={{
-                      padding: '12px 16px',
-                      borderRadius: '8px',
-                      backgroundColor: 'var(--bg-primary)',
-                      border: '1px solid var(--border-color)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ fontSize: '20px' }}>
-                        {source.type === 'gitlab' ? '🦊' : '🐙'}
-                      </span>
-                      <div>
-                        <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>
-                          {source.name}
-                        </div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                          {source.type === 'gitlab' ? 'GitLab' : 'GitHub'} · {source.organization || 'Personal'}
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button
-                        onClick={() => setEditingSource(source)}
-                        style={{
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          border: '1px solid var(--border-color)',
-                          backgroundColor: 'transparent',
-                          color: 'var(--text-primary)',
-                          fontSize: '12px',
-                          fontWeight: 500,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(source.id)}
-                        style={{
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          backgroundColor: 'var(--danger-bg)',
-                          color: 'var(--danger-text)',
-                          fontSize: '12px',
-                          fontWeight: 500,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {activeTab === 'schedule' && settings && (
+            <ScheduleTab settings={settings} onUpdate={handleSettingsUpdate} />
+          )}
+
+          {activeTab === 'email' && settings && (
+            <EmailTab settings={settings} onUpdate={handleSettingsUpdate} onTestEmail={handleTestEmail} />
+          )}
         </div>
       </div>
 
@@ -562,6 +526,420 @@ function SourceModal({ source, onClose, onSubmit }: {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function SourcesTab({ sources, loading, onAddSource, onEditSource, onDeleteSource }: {
+  sources: Source[];
+  loading: boolean;
+  onAddSource: () => void;
+  onEditSource: (source: Source) => void;
+  onDeleteSource: (id: number) => void;
+}) {
+  return (
+    <div>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '16px',
+      }}>
+        <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+          Git Sources
+        </h3>
+        <button
+          onClick={onAddSource}
+          style={{
+            padding: '6px 12px',
+            borderRadius: '6px',
+            border: 'none',
+            backgroundColor: 'var(--accent)',
+            color: 'white',
+            fontSize: '13px',
+            fontWeight: 500,
+            cursor: 'pointer',
+          }}
+        >
+          + Add
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+          Loading...
+        </div>
+      ) : sources.length === 0 ? (
+        <div style={{
+          padding: '32px 16px',
+          textAlign: 'center',
+          backgroundColor: 'var(--bg-primary)',
+          borderRadius: '8px',
+          border: '1px solid var(--border-color)',
+        }}>
+          <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔗</div>
+          <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: 0 }}>
+            No sources configured yet
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {sources.map((source) => (
+            <div
+              key={source.id}
+              style={{
+                padding: '12px 16px',
+                borderRadius: '8px',
+                backgroundColor: 'var(--bg-primary)',
+                border: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '20px' }}>
+                  {source.type === 'gitlab' ? '🦊' : '🐙'}
+                </span>
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                    {source.name}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    {source.type === 'gitlab' ? 'GitLab' : 'GitHub'} · {source.organization || 'Personal'}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  onClick={() => onEditSource(source)}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'transparent',
+                    color: 'var(--text-primary)',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => onDeleteSource(source.id)}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    backgroundColor: 'var(--danger-bg)',
+                    color: 'var(--danger-text)',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScheduleTab({ settings, onUpdate }: { settings: Settings; onUpdate: (updates: Partial<Settings>) => void }) {
+  const [cron, setCron] = useState(settings.schedule_cron);
+
+  const cronPresets = [
+    { label: 'Daily at 9 AM', value: '0 9 * * *' },
+    { label: 'Daily at 6 PM', value: '0 18 * * *' },
+    { label: 'Every 12 hours', value: '0 */12 * * *' },
+    { label: 'Weekly (Mon 9 AM)', value: '0 9 * * 1' },
+    { label: 'Every 6 hours', value: '0 */6 * * *' },
+  ];
+
+  return (
+    <div>
+      <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 16px' }}>
+        Scheduled Scans
+      </h3>
+
+      <div style={{ marginBottom: '20px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={settings.schedule_enabled}
+            onChange={(e) => onUpdate({ schedule_enabled: e.target.checked })}
+            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Enable scheduled scans</span>
+        </label>
+      </div>
+
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '8px' }}>
+          Schedule Presets
+        </label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {cronPresets.map((preset) => (
+            <button
+              key={preset.value}
+              onClick={() => {
+                setCron(preset.value);
+                onUpdate({ schedule_cron: preset.value });
+              }}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                border: `1px solid ${cron === preset.value ? 'var(--accent)' : 'var(--border-color)'}`,
+                backgroundColor: cron === preset.value ? 'var(--accent-light)' : 'transparent',
+                color: cron === preset.value ? 'var(--accent)' : 'var(--text-secondary)',
+                fontSize: '12px',
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
+          Cron Expression
+        </label>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input
+            type="text"
+            value={cron}
+            onChange={(e) => setCron(e.target.value)}
+            placeholder="0 9 * * *"
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          <button
+            onClick={() => onUpdate({ schedule_cron: cron })}
+            style={{
+              padding: '10px 16px',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: 'var(--accent)',
+              color: 'white',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            Save
+          </button>
+        </div>
+        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+          Format: minute hour day month weekday (e.g., "0 9 * * *" = every day at 9 AM)
+        </p>
+      </div>
+
+      <div style={{
+        padding: '12px',
+        borderRadius: '8px',
+        backgroundColor: 'var(--bg-primary)',
+        border: '1px solid var(--border-color)',
+      }}>
+        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
+          <strong>Current:</strong> {settings.schedule_enabled ? `Enabled (${settings.schedule_cron})` : 'Disabled'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function EmailTab({ settings, onUpdate, onTestEmail }: {
+  settings: Settings;
+  onUpdate: (updates: Partial<Settings>) => void;
+  onTestEmail: () => void;
+}) {
+  const [form, setForm] = useState({
+    email_smtp_host: settings.email_smtp_host,
+    email_smtp_port: settings.email_smtp_port,
+    email_smtp_user: settings.email_smtp_user,
+    email_smtp_pass: settings.email_smtp_pass,
+    email_from: settings.email_from,
+    email_to: settings.email_to,
+  });
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onUpdate(form);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleTest() {
+    setTesting(true);
+    try {
+      await onTestEmail();
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <div>
+      <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 16px' }}>
+        Email Notifications
+      </h3>
+
+      <div style={{ marginBottom: '20px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={settings.email_enabled}
+            onChange={(e) => onUpdate({ email_enabled: e.target.checked })}
+            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Enable email notifications</span>
+        </label>
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={settings.email_notify_new_outdated}
+            onChange={(e) => onUpdate({ email_notify_new_outdated: e.target.checked })}
+            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Notify on new outdated dependencies</span>
+        </label>
+      </div>
+
+      <div style={{ marginBottom: '14px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
+          SMTP Host
+        </label>
+        <input
+          type="text"
+          value={form.email_smtp_host}
+          onChange={(e) => setForm({ ...form, email_smtp_host: e.target.value })}
+          placeholder="smtp.gmail.com"
+          style={inputStyle}
+        />
+      </div>
+
+      <div style={{ marginBottom: '14px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
+          SMTP Port
+        </label>
+        <input
+          type="number"
+          value={form.email_smtp_port}
+          onChange={(e) => setForm({ ...form, email_smtp_port: parseInt(e.target.value) || 587 })}
+          placeholder="587"
+          style={inputStyle}
+        />
+      </div>
+
+      <div style={{ marginBottom: '14px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
+          SMTP Username
+        </label>
+        <input
+          type="text"
+          value={form.email_smtp_user}
+          onChange={(e) => setForm({ ...form, email_smtp_user: e.target.value })}
+          placeholder="your-email@gmail.com"
+          style={inputStyle}
+        />
+      </div>
+
+      <div style={{ marginBottom: '14px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
+          SMTP Password
+        </label>
+        <input
+          type="password"
+          value={form.email_smtp_pass}
+          onChange={(e) => setForm({ ...form, email_smtp_pass: e.target.value })}
+          placeholder="App password or SMTP password"
+          style={inputStyle}
+        />
+        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+          For Gmail, use an App Password
+        </p>
+      </div>
+
+      <div style={{ marginBottom: '14px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
+          From Address
+        </label>
+        <input
+          type="email"
+          value={form.email_from}
+          onChange={(e) => setForm({ ...form, email_from: e.target.value })}
+          placeholder="stale@example.com"
+          style={inputStyle}
+        />
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
+          To Address(es)
+        </label>
+        <input
+          type="text"
+          value={form.email_to}
+          onChange={(e) => setForm({ ...form, email_to: e.target.value })}
+          placeholder="team@example.com, dev@example.com"
+          style={inputStyle}
+        />
+        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+          Comma-separated for multiple recipients
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            flex: 1,
+            padding: '10px 16px',
+            borderRadius: '8px',
+            border: 'none',
+            backgroundColor: 'var(--accent)',
+            color: 'white',
+            fontSize: '13px',
+            fontWeight: 500,
+            cursor: saving ? 'not-allowed' : 'pointer',
+            opacity: saving ? 0.7 : 1,
+          }}
+        >
+          {saving ? 'Saving...' : 'Save Settings'}
+        </button>
+        <button
+          onClick={handleTest}
+          disabled={testing || !settings.email_smtp_host}
+          style={{
+            padding: '10px 16px',
+            borderRadius: '8px',
+            border: '1px solid var(--border-color)',
+            backgroundColor: 'transparent',
+            color: 'var(--text-primary)',
+            fontSize: '13px',
+            fontWeight: 500,
+            cursor: testing || !settings.email_smtp_host ? 'not-allowed' : 'pointer',
+            opacity: testing || !settings.email_smtp_host ? 0.7 : 1,
+          }}
+        >
+          {testing ? 'Sending...' : 'Send Test'}
+        </button>
       </div>
     </div>
   );

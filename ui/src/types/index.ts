@@ -80,3 +80,35 @@ export interface PaginatedDependencies {
   limit: number;
   total_pages: number;
 }
+
+export interface Settings {
+  schedule_enabled: boolean;
+  schedule_cron: string;
+  email_enabled: boolean;
+  email_smtp_host: string;
+  email_smtp_port: number;
+  email_smtp_user: string;
+  email_smtp_pass: string;
+  email_from: string;
+  email_to: string;
+  email_notify_new_outdated: boolean;
+}
+
+export interface SettingsInput {
+  schedule_enabled?: boolean;
+  schedule_cron?: string;
+  email_enabled?: boolean;
+  email_smtp_host?: string;
+  email_smtp_port?: number;
+  email_smtp_user?: string;
+  email_smtp_pass?: string;
+  email_from?: string;
+  email_to?: string;
+  email_notify_new_outdated?: boolean;
+}
+
+export interface NextScan {
+  enabled: boolean;
+  next_run?: string;
+  cron_expr: string;
+}

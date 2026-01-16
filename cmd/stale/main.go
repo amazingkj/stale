@@ -12,6 +12,7 @@ import (
 	"github.com/jiin/stale/internal/config"
 	"github.com/jiin/stale/internal/database"
 	"github.com/jiin/stale/internal/repository"
+	"github.com/jiin/stale/internal/service/email"
 	"github.com/jiin/stale/internal/service/scanner"
 	"github.com/jiin/stale/internal/service/scheduler"
 	"github.com/rs/zerolog"
@@ -52,16 +53,18 @@ func main() {
 	repoRepo := repository.NewRepoRepository(db)
 	depRepo := repository.NewDependencyRepository(db)
 	scanRepo := repository.NewScanRepository(db)
+	settingsRepo := repository.NewSettingsRepository(db)
 
 	// Initialize services
+	emailService := email.New()
 	scannerService := scanner.New(sourceRepo, repoRepo, depRepo, scanRepo)
-	schedulerService := scheduler.New(scannerService, scanRepo, cfg.ScanIntervalHours)
+	schedulerService := scheduler.New(scannerService, scanRepo, depRepo, settingsRepo, emailService)
 
 	// Start background scheduler
 	go schedulerService.Start()
 
 	// Initialize router
-	router := api.NewRouter(db, schedulerService)
+	router := api.NewRouter(db, schedulerService, emailService)
 
 	// Create HTTP server
 	srv := &http.Server{

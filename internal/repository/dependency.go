@@ -244,3 +244,26 @@ func (r *DependencyRepository) GetRepositoryNames(ctx context.Context) ([]string
 	}
 	return names, nil
 }
+
+// MarkPreviouslyOutdated marks currently outdated dependencies before a new scan
+func (r *DependencyRepository) MarkPreviouslyOutdated(ctx context.Context) error {
+	_, err := r.db.ExecContext(ctx, "UPDATE dependencies SET previously_outdated = is_outdated")
+	return err
+}
+
+// GetNewlyOutdated returns dependencies that became outdated in the latest scan
+func (r *DependencyRepository) GetNewlyOutdated(ctx context.Context) ([]domain.DependencyWithRepo, error) {
+	query := `SELECT d.*, r.name as repo_name, r.full_name as repo_full_name, s.name as source_name
+              FROM dependencies d
+              JOIN repositories r ON d.repository_id = r.id
+              JOIN sources s ON r.source_id = s.id
+              WHERE d.is_outdated = TRUE AND (d.previously_outdated = FALSE OR d.previously_outdated IS NULL)
+              ORDER BY r.full_name, d.name`
+
+	var deps []domain.DependencyWithRepo
+	err := r.db.SelectContext(ctx, &deps, query)
+	if err != nil {
+		return nil, err
+	}
+	return deps, nil
+}
