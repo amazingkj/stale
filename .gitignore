@@ -64,3 +64,9 @@ tmp/
 *_ed25519
 credentials.json
 secrets.json
+
+# Claude Code
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+.claudeignore
