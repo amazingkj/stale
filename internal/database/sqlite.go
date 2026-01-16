@@ -12,12 +12,14 @@ import (
 var migrations embed.FS
 
 func New(dbPath string) (*sqlx.DB, error) {
-	db, err := sqlx.Connect("sqlite", dbPath+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)")
+	db, err := sqlx.Connect("sqlite", dbPath+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	db.SetMaxOpenConns(1)
+	// Increase connection pool for better concurrency with WAL mode
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(2)
 
 	return db, nil
 }
@@ -30,6 +32,7 @@ func Migrate(db *sqlx.DB) error {
 		"migrations/003_add_gitlab.sql",
 		"migrations/004_add_repositories.sql",
 		"migrations/005_add_go_mod.sql",
+		"migrations/006_performance_indexes.sql",
 	}
 
 	for _, file := range migrationFiles {

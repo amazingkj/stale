@@ -8,13 +8,15 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/jiin/stale/internal/service/httputil"
 )
 
 type Client struct {
-	httpClient   *http.Client
-	token        string
-	baseURL      string
-	groupPath    string // Optional: for group-level operations
+	httpClient *http.Client
+	token      string
+	baseURL    string
+	groupPath  string // Optional: for group-level operations
 }
 
 type Repository struct {
@@ -35,12 +37,10 @@ func New(token, baseURL, groupPath string) *Client {
 		baseURL = "https://gitlab.com"
 	}
 	return &Client{
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-		token:     token,
-		baseURL:   baseURL,
-		groupPath: groupPath,
+		httpClient: httputil.NewClient(30 * time.Second),
+		token:      token,
+		baseURL:    baseURL,
+		groupPath:  groupPath,
 	}
 }
 

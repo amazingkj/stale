@@ -44,7 +44,7 @@ func NewRouter(
 
 	// Handlers
 	healthHandler := handler.NewHealthHandler()
-	sourceHandler := handler.NewSourceHandler(sourceRepo)
+	sourceHandler := handler.NewSourceHandler(sourceRepo, repoRepo, depRepo)
 	repoHandler := handler.NewRepoHandler(repoRepo, depRepo)
 	depHandler := handler.NewDependencyHandler(depRepo)
 	scanHandler := handler.NewScanHandler(scanRepo, scheduler)
@@ -75,6 +75,7 @@ func NewRouter(
 			r.Get("/paginated", depHandler.ListPaginated)
 			r.Get("/upgradable", depHandler.GetUpgradable)
 			r.Get("/stats", depHandler.GetStats)
+			r.Get("/repos", depHandler.GetRepositoryNames)
 			r.Get("/export", depHandler.ExportCSV)
 		})
 
@@ -83,6 +84,7 @@ func NewRouter(
 			r.Get("/", scanHandler.List)
 			r.Get("/running", scanHandler.GetRunning)
 			r.Get("/{id}", scanHandler.Get)
+			r.Post("/{id}/cancel", scanHandler.Cancel)
 		})
 	})
 
@@ -123,6 +125,20 @@ func spaHandler() http.HandlerFunc {
 			contentType = "application/octet-stream"
 		}
 		w.Header().Set("Content-Type", contentType)
+
+		// Set cache headers based on file type
+		switch ext {
+		case ".js", ".css":
+			// Immutable assets with hash in filename - cache for 1 year
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		case ".html":
+			// HTML should be revalidated
+			w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
+		case ".svg", ".png", ".jpg", ".ico":
+			// Images - cache for 1 week
+			w.Header().Set("Cache-Control", "public, max-age=604800")
+		}
+
 		w.Write(file)
 	}
 }

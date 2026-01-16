@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/jiin/stale/internal/service/httputil"
 )
 
 const proxyURL = "https://proxy.golang.org"
 
 type Client struct {
-	httpClient *http.Client
+	httpClient  *http.Client
+	retryConfig httputil.RetryConfig
 }
 
 type ModuleInfo struct {
@@ -22,7 +25,8 @@ type ModuleInfo struct {
 
 func New() *Client {
 	return &Client{
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient:  httputil.NewClient(10 * time.Second),
+		retryConfig: httputil.DefaultRetryConfig(),
 	}
 }
 
@@ -47,7 +51,7 @@ func (c *Client) GetLatestVersion(ctx context.Context, modulePath string) (strin
 		return "", err
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := httputil.DoWithRetry(ctx, c.httpClient, req, c.retryConfig)
 	if err != nil {
 		return "", err
 	}

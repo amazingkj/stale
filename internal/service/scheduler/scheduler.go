@@ -37,6 +37,14 @@ func New(
 }
 
 func (s *Scheduler) Start() {
+	// Cleanup any stale scans from previous runs
+	ctx := context.Background()
+	if affected, err := s.scanRepo.CleanupStaleScans(ctx); err != nil {
+		log.Warn().Err(err).Msg("failed to cleanup stale scans on startup")
+	} else if affected > 0 {
+		log.Info().Int64("cleaned_up", affected).Msg("cleaned up stale scans from previous runs")
+	}
+
 	if s.intervalHrs <= 0 {
 		log.Info().Msg("scheduler disabled (interval <= 0)")
 		return
@@ -60,6 +68,14 @@ func (s *Scheduler) Start() {
 
 func (s *Scheduler) Stop() {
 	close(s.stopCh)
+}
+
+func (s *Scheduler) ClearRunningJob(scanID int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.runningJobID != nil && *s.runningJobID == scanID {
+		s.runningJobID = nil
+	}
 }
 
 func (s *Scheduler) runScheduledScan() {

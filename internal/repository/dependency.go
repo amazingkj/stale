@@ -185,3 +185,62 @@ func (r *DependencyRepository) Count(ctx context.Context) (int, error) {
 	err := r.db.GetContext(ctx, &count, "SELECT COUNT(*) FROM dependencies")
 	return count, err
 }
+
+func (r *DependencyRepository) DeleteBySourceID(ctx context.Context, sourceID int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`DELETE FROM dependencies WHERE repository_id IN (SELECT id FROM repositories WHERE source_id = ?)`,
+		sourceID)
+	return err
+}
+
+// GetFiltered returns dependencies with database-level filtering for better performance
+func (r *DependencyRepository) GetFiltered(ctx context.Context, filter, repoFilter string) ([]domain.DependencyWithRepo, error) {
+	query := `SELECT d.*, r.name as repo_name, r.full_name as repo_full_name, s.name as source_name
+              FROM dependencies d
+              JOIN repositories r ON d.repository_id = r.id
+              JOIN sources s ON r.source_id = s.id
+              WHERE 1=1`
+	args := []interface{}{}
+
+	// Apply repository filter
+	if repoFilter != "" {
+		query += " AND r.full_name = ?"
+		args = append(args, repoFilter)
+	}
+
+	// Apply status filter
+	switch filter {
+	case "upgradable":
+		query += " AND d.is_outdated = TRUE"
+	case "uptodate":
+		query += " AND d.is_outdated = FALSE"
+	case "prod":
+		query += " AND d.type = 'dependency'"
+	case "dev":
+		query += " AND d.type = 'devDependency'"
+	}
+
+	query += " ORDER BY d.name"
+
+	var deps []domain.DependencyWithRepo
+	err := r.db.SelectContext(ctx, &deps, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	return deps, nil
+}
+
+// GetRepositoryNames returns unique repository full names for dropdowns
+func (r *DependencyRepository) GetRepositoryNames(ctx context.Context) ([]string, error) {
+	query := `SELECT DISTINCT r.full_name
+              FROM repositories r
+              JOIN dependencies d ON d.repository_id = r.id
+              ORDER BY r.full_name`
+
+	var names []string
+	err := r.db.SelectContext(ctx, &names, query)
+	if err != nil {
+		return nil, err
+	}
+	return names, nil
+}

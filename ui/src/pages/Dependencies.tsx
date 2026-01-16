@@ -45,17 +45,11 @@ export function Dependencies() {
   const statusFilter = (searchParams.get('filter') as StatusFilter) || 'all';
   const currentPage = parseInt(searchParams.get('page') || '1', 10);
 
-  // Load repositories for filter dropdown (from non-paginated endpoint)
+  // Load repositories for filter dropdown (using efficient endpoint)
   const loadRepositories = useCallback(async () => {
     try {
-      const data = await api.getDependencies();
-      const repoSet = new Set<string>();
-      data.forEach(dep => {
-        if (dep.repo_full_name) {
-          repoSet.add(dep.repo_full_name);
-        }
-      });
-      setAllRepos(Array.from(repoSet).sort());
+      const repos = await api.getRepositoryNames();
+      setAllRepos(repos);
     } catch {
       // Ignore - repos dropdown will just be empty
     }

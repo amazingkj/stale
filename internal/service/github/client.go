@@ -3,9 +3,11 @@ package github
 import (
 	"context"
 	"encoding/base64"
+	"net/http"
 	"strings"
 
 	"github.com/google/go-github/v68/github"
+	"github.com/jiin/stale/internal/service/httputil"
 	"golang.org/x/oauth2"
 )
 
@@ -15,10 +17,22 @@ type Client struct {
 }
 
 func New(token, org string) *Client {
+	// Use custom transport with connection pooling
+	transport := httputil.DefaultTransport()
+
+	// Wrap with OAuth2 transport
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
-	tc := oauth2.NewClient(context.Background(), ts)
+	oauth2Transport := &oauth2.Transport{
+		Base:   transport,
+		Source: ts,
+	}
+
+	httpClient := &http.Client{
+		Transport: oauth2Transport,
+	}
+
 	return &Client{
-		client: github.NewClient(tc),
+		client: github.NewClient(httpClient),
 		org:    org,
 	}
 }

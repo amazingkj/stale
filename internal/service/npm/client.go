@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/jiin/stale/internal/service/httputil"
 )
 
 const registryURL = "https://registry.npmjs.org"
 
 type Client struct {
-	httpClient *http.Client
+	httpClient  *http.Client
+	retryConfig httputil.RetryConfig
 }
 
 type PackageInfo struct {
@@ -21,7 +24,8 @@ type PackageInfo struct {
 
 func New() *Client {
 	return &Client{
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient:  httputil.NewClient(10 * time.Second),
+		retryConfig: httputil.DefaultRetryConfig(),
 	}
 }
 
@@ -35,7 +39,7 @@ func (c *Client) GetLatestVersion(ctx context.Context, packageName string) (stri
 	}
 	req.Header.Set("Accept", "application/vnd.npm.install-v1+json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := httputil.DoWithRetry(ctx, c.httpClient, req, c.retryConfig)
 	if err != nil {
 		return "", err
 	}

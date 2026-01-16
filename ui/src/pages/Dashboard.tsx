@@ -146,18 +146,26 @@ export function Dashboard() {
       return;
     }
 
+    // Poll every 3 seconds during active scan - balances responsiveness with resource usage
     const interval = setInterval(async () => {
       try {
         const scan = await api.getScan(currentScan.id);
         setCurrentScan(scan);
-        if (scan.status === 'completed' || scan.status === 'failed') {
+        if (scan.status === 'completed') {
           setScanning(false);
+          if (scan.repos_found === 0) {
+            setError('Scan completed but no repositories with manifest files were found. Check your sources configuration.');
+          }
+          loadData();
+        } else if (scan.status === 'failed') {
+          setScanning(false);
+          setError(scan.error || 'Scan failed');
           loadData();
         }
       } catch {
         // Ignore polling errors
       }
-    }, 5000);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [currentScan, loadData]);
@@ -184,6 +192,18 @@ export function Dashboard() {
       setError(message);
     }
   }, [scanning]);
+
+  const handleCancelScan = useCallback(async () => {
+    if (!currentScan) return;
+    try {
+      await api.cancelScan(currentScan.id);
+      setScanning(false);
+      setCurrentScan(null);
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel scan');
+    }
+  }, [currentScan, loadData]);
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
@@ -256,7 +276,7 @@ export function Dashboard() {
       {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
 
       {/* Scan Progress */}
-      {currentScan && currentScan.status === 'running' && (
+      {currentScan && (currentScan.status === 'pending' || currentScan.status === 'running') && (
         <div style={{
           padding: '12px 16px',
           borderRadius: '8px',
@@ -265,10 +285,28 @@ export function Dashboard() {
           fontSize: '14px',
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
+          justifyContent: 'space-between',
         }}>
-          <LoadingSpinner size="sm" />
-          Scanning... Found {currentScan.repos_found} repos, {currentScan.deps_found} dependencies
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <LoadingSpinner size="sm" />
+            {currentScan.status === 'pending'
+              ? 'Starting scan...'
+              : `Scanning... Found ${currentScan.repos_found} repos, ${currentScan.deps_found} dependencies`}
+          </div>
+          <button
+            onClick={handleCancelScan}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              border: 'none',
+              color: 'white',
+              padding: '4px 12px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            Cancel
+          </button>
         </div>
       )}
 

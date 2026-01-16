@@ -11,14 +11,21 @@ import (
 
 	"github.com/jiin/stale/internal/domain"
 	"github.com/jiin/stale/internal/repository"
+	"github.com/jiin/stale/internal/service/cache"
 )
 
 type DependencyHandler struct {
-	repo *repository.DependencyRepository
+	repo       *repository.DependencyRepository
+	statsCache *cache.Cache[*domain.DependencyStats]
+	reposCache *cache.Cache[[]string]
 }
 
 func NewDependencyHandler(repo *repository.DependencyRepository) *DependencyHandler {
-	return &DependencyHandler{repo: repo}
+	return &DependencyHandler{
+		repo:       repo,
+		statsCache: cache.New[*domain.DependencyStats](2 * time.Minute),
+		reposCache: cache.New[[]string](5 * time.Minute),
+	}
 }
 
 func (h *DependencyHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -85,12 +92,42 @@ func (h *DependencyHandler) GetUpgradable(w http.ResponseWriter, r *http.Request
 }
 
 func (h *DependencyHandler) GetStats(w http.ResponseWriter, r *http.Request) {
+	// Check cache first
+	if stats, found := h.statsCache.Get("stats"); found {
+		json.NewEncoder(w).Encode(stats)
+		return
+	}
+
 	stats, err := h.repo.GetStats(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Cache the result
+	h.statsCache.Set("stats", stats)
 	json.NewEncoder(w).Encode(stats)
+}
+
+func (h *DependencyHandler) GetRepositoryNames(w http.ResponseWriter, r *http.Request) {
+	// Check cache first
+	if names, found := h.reposCache.Get("repos"); found {
+		json.NewEncoder(w).Encode(names)
+		return
+	}
+
+	names, err := h.repo.GetRepositoryNames(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if names == nil {
+		names = []string{}
+	}
+
+	// Cache the result
+	h.reposCache.Set("repos", names)
+	json.NewEncoder(w).Encode(names)
 }
 
 func (h *DependencyHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
@@ -102,8 +139,8 @@ func (h *DependencyHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 		filter = "upgradable"
 	}
 
-	// Get all dependencies first
-	deps, err := h.repo.GetAll(r.Context())
+	// Get filtered dependencies directly from database for better performance
+	deps, err := h.repo.GetFiltered(r.Context(), filter, repoFilter)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -112,37 +149,6 @@ func (h *DependencyHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 	if deps == nil {
 		deps = []domain.DependencyWithRepo{}
 	}
-
-	// Apply filters
-	var filtered []domain.DependencyWithRepo
-	for _, dep := range deps {
-		// Apply repository filter
-		if repoFilter != "" && dep.RepoFullName != repoFilter {
-			continue
-		}
-
-		// Apply status filter
-		switch filter {
-		case "upgradable":
-			if !dep.IsOutdated {
-				continue
-			}
-		case "uptodate":
-			if dep.IsOutdated {
-				continue
-			}
-		case "prod":
-			if dep.Type != "dependency" {
-				continue
-			}
-		case "dev":
-			if dep.Type != "devDependency" {
-				continue
-			}
-		}
-		filtered = append(filtered, dep)
-	}
-	deps = filtered
 
 	// Build filename
 	var filenameParts []string

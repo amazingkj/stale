@@ -228,51 +228,51 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source, scanID i
 		var foundManifest bool
 		var repoDeps int32
 
-		// Collect manifest contents first
-		var packageJSON []byte
-		var pomXML []byte
-		var buildGradle []byte
-		var buildGradleKts []byte
-		var goMod []byte
-
-		// Check for package.json (npm)
-		if content, err := provider.GetFileContent(ctx, repo.FullName, "package.json", repo.DefaultBranch); err == nil {
-			log.Info().Str("repo", repo.FullName).Msg("found package.json")
-			packageJSON = content
-			repoEntity.HasPackageJSON = true
-			foundManifest = true
+		// Fetch all manifest files in parallel for better performance
+		type manifestResult struct {
+			name    string
+			content []byte
 		}
 
-		// Check for pom.xml (Maven)
-		if content, err := provider.GetFileContent(ctx, repo.FullName, "pom.xml", repo.DefaultBranch); err == nil {
-			log.Info().Str("repo", repo.FullName).Msg("found pom.xml")
-			pomXML = content
-			repoEntity.HasPomXML = true
-			foundManifest = true
+		manifestFiles := []string{"package.json", "pom.xml", "build.gradle", "build.gradle.kts", "go.mod"}
+		results := make(chan manifestResult, len(manifestFiles))
+
+		for _, file := range manifestFiles {
+			go func(f string) {
+				content, err := provider.GetFileContent(ctx, repo.FullName, f, repo.DefaultBranch)
+				if err != nil {
+					results <- manifestResult{f, nil}
+				} else {
+					results <- manifestResult{f, content}
+				}
+			}(file)
 		}
 
-		// Check for build.gradle (Gradle)
-		if content, err := provider.GetFileContent(ctx, repo.FullName, "build.gradle", repo.DefaultBranch); err == nil {
-			log.Info().Str("repo", repo.FullName).Msg("found build.gradle")
-			buildGradle = content
-			repoEntity.HasBuildGradle = true
-			foundManifest = true
-		}
-
-		// Also check for build.gradle.kts (Kotlin DSL)
-		if content, err := provider.GetFileContent(ctx, repo.FullName, "build.gradle.kts", repo.DefaultBranch); err == nil {
-			log.Info().Str("repo", repo.FullName).Msg("found build.gradle.kts")
-			buildGradleKts = content
-			repoEntity.HasBuildGradle = true
-			foundManifest = true
-		}
-
-		// Check for go.mod (Go)
-		if content, err := provider.GetFileContent(ctx, repo.FullName, "go.mod", repo.DefaultBranch); err == nil {
-			log.Info().Str("repo", repo.FullName).Msg("found go.mod")
-			goMod = content
-			repoEntity.HasGoMod = true
-			foundManifest = true
+		// Collect results
+		var packageJSON, pomXML, buildGradle, buildGradleKts, goMod []byte
+		for i := 0; i < len(manifestFiles); i++ {
+			result := <-results
+			if result.content != nil {
+				log.Info().Str("repo", repo.FullName).Str("file", result.name).Msg("found manifest")
+				foundManifest = true
+				switch result.name {
+				case "package.json":
+					packageJSON = result.content
+					repoEntity.HasPackageJSON = true
+				case "pom.xml":
+					pomXML = result.content
+					repoEntity.HasPomXML = true
+				case "build.gradle":
+					buildGradle = result.content
+					repoEntity.HasBuildGradle = true
+				case "build.gradle.kts":
+					buildGradleKts = result.content
+					repoEntity.HasBuildGradle = true
+				case "go.mod":
+					goMod = result.content
+					repoEntity.HasGoMod = true
+				}
+			}
 		}
 
 		// Skip if no manifest found

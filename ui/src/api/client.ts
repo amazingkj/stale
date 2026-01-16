@@ -53,6 +53,7 @@ export const api = {
     const params = upgradableOnly ? '?outdated=true' : '';
     return request<Dependency[]>(`/dependencies${params}`);
   },
+  getRepositoryNames: () => request<string[]>('/dependencies/repos'),
   getDependenciesPaginated: (page: number = 1, limit: number = 50, upgradableOnly?: boolean, repo?: string) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
@@ -81,4 +82,6 @@ export const api = {
     if (text === 'null' || !text) return null;
     return JSON.parse(text);
   },
+  cancelScan: (id: number) =>
+    request<void>(`/scans/${id}/cancel`, { method: 'POST' }),
 };

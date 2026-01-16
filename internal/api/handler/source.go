@@ -14,11 +14,13 @@ import (
 )
 
 type SourceHandler struct {
-	repo *repository.SourceRepository
+	repo    *repository.SourceRepository
+	repoRep *repository.RepoRepository
+	depRepo *repository.DependencyRepository
 }
 
-func NewSourceHandler(repo *repository.SourceRepository) *SourceHandler {
-	return &SourceHandler{repo: repo}
+func NewSourceHandler(repo *repository.SourceRepository, repoRep *repository.RepoRepository, depRepo *repository.DependencyRepository) *SourceHandler {
+	return &SourceHandler{repo: repo, repoRep: repoRep, depRepo: depRepo}
 }
 
 func (h *SourceHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -96,10 +98,24 @@ func (h *SourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.Delete(r.Context(), id); err != nil {
+	ctx := r.Context()
+
+	// Cascade delete: dependencies -> repositories -> source
+	if err := h.depRepo.DeleteBySourceID(ctx, id); err != nil {
+		http.Error(w, "failed to delete dependencies: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.repoRep.DeleteBySourceID(ctx, id); err != nil {
+		http.Error(w, "failed to delete repositories: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.repo.Delete(ctx, id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 

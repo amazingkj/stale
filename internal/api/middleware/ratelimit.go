@@ -14,6 +14,7 @@ type RateLimiter struct {
 	interval   time.Duration // refill interval
 	maxTokens  int           // max tokens per client
 	cleanupInt time.Duration // cleanup interval for stale entries
+	stopCh     chan struct{} // channel to stop cleanup goroutine
 }
 
 type bucket struct {
@@ -31,6 +32,7 @@ func NewRateLimiter(rate int, interval time.Duration) *RateLimiter {
 		interval:   interval,
 		maxTokens:  rate * 2, // allow burst up to 2x rate
 		cleanupInt: 5 * time.Minute,
+		stopCh:     make(chan struct{}),
 	}
 
 	// Start cleanup goroutine
@@ -39,18 +41,30 @@ func NewRateLimiter(rate int, interval time.Duration) *RateLimiter {
 	return rl
 }
 
+// Stop stops the cleanup goroutine
+func (rl *RateLimiter) Stop() {
+	close(rl.stopCh)
+}
+
 // cleanup removes stale entries periodically
 func (rl *RateLimiter) cleanup() {
 	ticker := time.NewTicker(rl.cleanupInt)
-	for range ticker.C {
-		rl.mu.Lock()
-		now := time.Now()
-		for ip, b := range rl.tokens {
-			if now.Sub(b.lastSeen) > rl.cleanupInt {
-				delete(rl.tokens, ip)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-rl.stopCh:
+			return
+		case <-ticker.C:
+			rl.mu.Lock()
+			now := time.Now()
+			for ip, b := range rl.tokens {
+				if now.Sub(b.lastSeen) > rl.cleanupInt {
+					delete(rl.tokens, ip)
+				}
 			}
+			rl.mu.Unlock()
 		}
-		rl.mu.Unlock()
 	}
 }
 

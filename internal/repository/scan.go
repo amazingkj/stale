@@ -86,3 +86,15 @@ func (r *ScanRepository) GetLatestRunning(ctx context.Context) (*domain.ScanJob,
 	}
 	return &scan, nil
 }
+
+// CleanupStaleScans marks scans that have been running for more than 30 minutes as failed
+func (r *ScanRepository) CleanupStaleScans(ctx context.Context) (int64, error) {
+	result, err := r.db.ExecContext(ctx,
+		`UPDATE scan_jobs SET status = ?, finished_at = ?, error = ?
+		 WHERE status = ? AND started_at < datetime('now', '-30 minutes')`,
+		domain.ScanStatusFailed, time.Now(), "scan timed out", domain.ScanStatusRunning)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
