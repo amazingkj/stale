@@ -81,6 +81,7 @@ func NewRouter(
 		r.Route("/scans", func(r chi.Router) {
 			r.Post("/", scanHandler.TriggerScan)
 			r.Get("/", scanHandler.List)
+			r.Get("/running", scanHandler.GetRunning)
 			r.Get("/{id}", scanHandler.Get)
 		})
 	})

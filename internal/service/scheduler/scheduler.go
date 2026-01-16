@@ -2,6 +2,8 @@ package scheduler
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"time"
 
 	"github.com/jiin/stale/internal/domain"
@@ -10,11 +12,14 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+var ErrScanAlreadyRunning = errors.New("a scan is already running")
+
 type Scheduler struct {
 	scanner      *scanner.Scanner
 	scanRepo     *repository.ScanRepository
 	intervalHrs  int
 	stopCh       chan struct{}
+	mu           sync.Mutex
 	runningJobID *int64
 }
 
@@ -58,13 +63,31 @@ func (s *Scheduler) Stop() {
 }
 
 func (s *Scheduler) runScheduledScan() {
+	s.mu.Lock()
+	if s.runningJobID != nil {
+		s.mu.Unlock()
+		log.Info().Msg("skipping scheduled scan - another scan is already running")
+		return
+	}
+
 	ctx := context.Background()
 
 	scan, err := s.scanRepo.Create(ctx, nil)
 	if err != nil {
+		s.mu.Unlock()
 		log.Error().Err(err).Msg("failed to create scheduled scan job")
 		return
 	}
+
+	s.runningJobID = &scan.ID
+	s.mu.Unlock()
+
+	// Clear running job ID when done
+	defer func() {
+		s.mu.Lock()
+		s.runningJobID = nil
+		s.mu.Unlock()
+	}()
 
 	log.Info().Int64("scan_id", scan.ID).Msg("starting scheduled scan")
 
@@ -89,10 +112,20 @@ func (s *Scheduler) runScheduledScan() {
 }
 
 func (s *Scheduler) TriggerScan(ctx context.Context, sourceID *int64) (*domain.ScanJob, error) {
+	s.mu.Lock()
+	if s.runningJobID != nil {
+		s.mu.Unlock()
+		return nil, ErrScanAlreadyRunning
+	}
+
 	scan, err := s.scanRepo.Create(ctx, sourceID)
 	if err != nil {
+		s.mu.Unlock()
 		return nil, err
 	}
+
+	s.runningJobID = &scan.ID
+	s.mu.Unlock()
 
 	go s.runScan(scan.ID, sourceID)
 
@@ -101,6 +134,13 @@ func (s *Scheduler) TriggerScan(ctx context.Context, sourceID *int64) (*domain.S
 
 func (s *Scheduler) runScan(scanID int64, sourceID *int64) {
 	ctx := context.Background()
+
+	// Clear running job ID when done
+	defer func() {
+		s.mu.Lock()
+		s.runningJobID = nil
+		s.mu.Unlock()
+	}()
 
 	if err := s.scanRepo.UpdateStatus(ctx, scanID, domain.ScanStatusRunning, nil); err != nil {
 		log.Error().Err(err).Msg("failed to update scan status to running")

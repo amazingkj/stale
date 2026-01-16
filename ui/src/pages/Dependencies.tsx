@@ -18,7 +18,7 @@ import {
   LoadingSpinner,
   ErrorMessage,
 } from '../components/common';
-import type { Dependency, PaginatedDependencies } from '../types';
+import type { PaginatedDependencies } from '../types';
 
 type StatusFilter = 'all' | 'upgradable' | 'uptodate' | 'prod' | 'dev';
 

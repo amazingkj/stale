@@ -109,11 +109,18 @@ export function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [deps, scans] = await Promise.all([
+      const [deps, scans, runningScan] = await Promise.all([
         api.getDependencies(),
         api.getScans(),
+        api.getRunningScan(),
       ]);
       setAllDeps(deps);
+
+      // Check if there's a running scan
+      if (runningScan) {
+        setCurrentScan(runningScan);
+        setScanning(true);
+      }
 
       // Find the last completed scan
       const completedScans = scans.filter(s => s.status === 'completed' && s.finished_at);
@@ -156,6 +163,7 @@ export function Dashboard() {
   }, [currentScan, loadData]);
 
   const handleScan = useCallback(async () => {
+    if (scanning) return; // Prevent double-click
     setScanning(true);
     setError(null);
     try {
@@ -163,9 +171,19 @@ export function Dashboard() {
       setCurrentScan(scan);
     } catch (err) {
       setScanning(false);
-      setError(err instanceof Error ? err.message : 'Failed to start scan');
+      const message = err instanceof Error ? err.message : 'Failed to start scan';
+      // Check if it's "already running" error - try to find the running scan
+      if (message.includes('already running')) {
+        const runningScan = await api.getRunningScan();
+        if (runningScan) {
+          setCurrentScan(runningScan);
+          setScanning(true);
+          return;
+        }
+      }
+      setError(message);
     }
-  }, []);
+  }, [scanning]);
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);

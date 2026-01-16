@@ -157,16 +157,11 @@ func (s *Scanner) ScanAll(ctx context.Context, scanID int64) error {
 	var totalRepos, totalDeps int32
 
 	for _, source := range sources {
-		repos, deps, err := s.scanSource(ctx, source)
+		err := s.scanSource(ctx, source, scanID, &totalRepos, &totalDeps)
 		if err != nil {
 			log.Error().Err(err).Str("source", source.Name).Msg("failed to scan source")
 			continue
 		}
-		atomic.AddInt32(&totalRepos, int32(repos))
-		atomic.AddInt32(&totalDeps, int32(deps))
-
-		// Update stats after each source for real-time progress
-		_ = s.scanRepo.UpdateStats(ctx, scanID, int(totalRepos), int(totalDeps))
 		_ = s.sourceRepo.UpdateLastScan(ctx, source.ID)
 	}
 
@@ -179,17 +174,17 @@ func (s *Scanner) ScanSource(ctx context.Context, sourceID, scanID int64) error 
 		return err
 	}
 
-	repos, deps, err := s.scanSource(ctx, *source)
+	var totalRepos, totalDeps int32
+	err = s.scanSource(ctx, *source, scanID, &totalRepos, &totalDeps)
 	if err != nil {
 		return err
 	}
 
 	_ = s.sourceRepo.UpdateLastScan(ctx, sourceID)
-	_ = s.scanRepo.UpdateStats(ctx, scanID, repos, deps)
 	return nil
 }
 
-func (s *Scanner) scanSource(ctx context.Context, source domain.Source) (int, int, error) {
+func (s *Scanner) scanSource(ctx context.Context, source domain.Source, scanID int64, totalRepos, totalDeps *int32) error {
 	var provider GitProvider
 
 	switch source.Type {
@@ -203,7 +198,7 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source) (int, in
 
 	repos, err := provider.ListRepositories(ctx)
 	if err != nil {
-		return 0, 0, err
+		return err
 	}
 
 	log.Info().Int("total_repos", len(repos)).Str("source", source.Name).Msg("fetched repositories from source")
@@ -217,10 +212,8 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source) (int, in
 
 	if len(repos) == 0 {
 		log.Warn().Str("source", source.Name).Msg("no repositories to scan")
-		return 0, 0, nil
+		return nil
 	}
-
-	var repoCount, depCount int32
 
 	for _, repo := range repos {
 		log.Info().Str("repo", repo.FullName).Str("branch", repo.DefaultBranch).Msg("scanning repository")
@@ -233,105 +226,115 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source) (int, in
 		}
 
 		var foundManifest bool
-		var totalDeps int32
+		var repoDeps int32
+
+		// Collect manifest contents first
+		var packageJSON []byte
+		var pomXML []byte
+		var buildGradle []byte
+		var buildGradleKts []byte
+		var goMod []byte
 
 		// Check for package.json (npm)
 		if content, err := provider.GetFileContent(ctx, repo.FullName, "package.json", repo.DefaultBranch); err == nil {
 			log.Info().Str("repo", repo.FullName).Msg("found package.json")
-			var pkg PackageJSON
-			if err := json.Unmarshal(content, &pkg); err == nil {
-				repoEntity.HasPackageJSON = true
-				foundManifest = true
-
-				repoID, err := s.repoRepo.Upsert(ctx, repoEntity)
-				if err != nil {
-					log.Error().Err(err).Str("repo", repo.FullName).Msg("failed to upsert repository")
-					continue
-				}
-
-				deps := s.processNpmDependencies(ctx, repoID, pkg.Dependencies, "dependency")
-				deps += s.processNpmDependencies(ctx, repoID, pkg.DevDependencies, "devDependency")
-				atomic.AddInt32(&totalDeps, int32(deps))
-			}
+			packageJSON = content
+			repoEntity.HasPackageJSON = true
+			foundManifest = true
 		}
 
 		// Check for pom.xml (Maven)
 		if content, err := provider.GetFileContent(ctx, repo.FullName, "pom.xml", repo.DefaultBranch); err == nil {
 			log.Info().Str("repo", repo.FullName).Msg("found pom.xml")
-			var pom PomXML
-			if err := xml.Unmarshal(content, &pom); err == nil {
-				repoEntity.HasPomXML = true
-				foundManifest = true
-
-				repoID, err := s.repoRepo.Upsert(ctx, repoEntity)
-				if err != nil {
-					log.Error().Err(err).Str("repo", repo.FullName).Msg("failed to upsert repository")
-					continue
-				}
-
-				deps := s.processMavenDependencies(ctx, repoID, pom)
-				atomic.AddInt32(&totalDeps, int32(deps))
-			}
+			pomXML = content
+			repoEntity.HasPomXML = true
+			foundManifest = true
 		}
 
 		// Check for build.gradle (Gradle)
 		if content, err := provider.GetFileContent(ctx, repo.FullName, "build.gradle", repo.DefaultBranch); err == nil {
 			log.Info().Str("repo", repo.FullName).Msg("found build.gradle")
+			buildGradle = content
 			repoEntity.HasBuildGradle = true
 			foundManifest = true
-
-			repoID, err := s.repoRepo.Upsert(ctx, repoEntity)
-			if err != nil {
-				log.Error().Err(err).Str("repo", repo.FullName).Msg("failed to upsert repository")
-				continue
-			}
-
-			deps := s.processGradleDependencies(ctx, repoID, string(content))
-			atomic.AddInt32(&totalDeps, int32(deps))
 		}
 
 		// Also check for build.gradle.kts (Kotlin DSL)
 		if content, err := provider.GetFileContent(ctx, repo.FullName, "build.gradle.kts", repo.DefaultBranch); err == nil {
 			log.Info().Str("repo", repo.FullName).Msg("found build.gradle.kts")
+			buildGradleKts = content
 			repoEntity.HasBuildGradle = true
 			foundManifest = true
-
-			repoID, err := s.repoRepo.Upsert(ctx, repoEntity)
-			if err != nil {
-				log.Error().Err(err).Str("repo", repo.FullName).Msg("failed to upsert repository")
-				continue
-			}
-
-			deps := s.processGradleDependencies(ctx, repoID, string(content))
-			atomic.AddInt32(&totalDeps, int32(deps))
 		}
 
 		// Check for go.mod (Go)
 		if content, err := provider.GetFileContent(ctx, repo.FullName, "go.mod", repo.DefaultBranch); err == nil {
 			log.Info().Str("repo", repo.FullName).Msg("found go.mod")
+			goMod = content
 			repoEntity.HasGoMod = true
 			foundManifest = true
-
-			repoID, err := s.repoRepo.Upsert(ctx, repoEntity)
-			if err != nil {
-				log.Error().Err(err).Str("repo", repo.FullName).Msg("failed to upsert repository")
-				continue
-			}
-
-			deps := s.processGoDependencies(ctx, repoID, string(content))
-			atomic.AddInt32(&totalDeps, int32(deps))
 		}
 
-		if foundManifest {
-			atomic.AddInt32(&repoCount, 1)
-			atomic.AddInt32(&depCount, totalDeps)
-			log.Info().Str("repo", repo.FullName).Int32("deps", totalDeps).Msg("repository scanned successfully")
-		} else {
+		// Skip if no manifest found
+		if !foundManifest {
 			log.Info().Str("repo", repo.FullName).Msg("no supported manifest file found (package.json, pom.xml, build.gradle, go.mod)")
+			continue
 		}
+
+		// Upsert repository and delete old dependencies
+		repoID, err := s.repoRepo.Upsert(ctx, repoEntity)
+		if err != nil {
+			log.Error().Err(err).Str("repo", repo.FullName).Msg("failed to upsert repository")
+			continue
+		}
+
+		// Delete old dependencies before adding new ones
+		if err := s.depRepo.DeleteByRepoID(ctx, repoID); err != nil {
+			log.Error().Err(err).Str("repo", repo.FullName).Msg("failed to delete old dependencies")
+		}
+
+		// Process each manifest type
+		if packageJSON != nil {
+			var pkg PackageJSON
+			if err := json.Unmarshal(packageJSON, &pkg); err == nil {
+				deps := s.processNpmDependencies(ctx, repoID, pkg.Dependencies, "dependency")
+				deps += s.processNpmDependencies(ctx, repoID, pkg.DevDependencies, "devDependency")
+				atomic.AddInt32(&repoDeps, int32(deps))
+			}
+		}
+
+		if pomXML != nil {
+			var pom PomXML
+			if err := xml.Unmarshal(pomXML, &pom); err == nil {
+				deps := s.processMavenDependencies(ctx, repoID, pom)
+				atomic.AddInt32(&repoDeps, int32(deps))
+			}
+		}
+
+		if buildGradle != nil {
+			deps := s.processGradleDependencies(ctx, repoID, string(buildGradle))
+			atomic.AddInt32(&repoDeps, int32(deps))
+		}
+
+		if buildGradleKts != nil {
+			deps := s.processGradleDependencies(ctx, repoID, string(buildGradleKts))
+			atomic.AddInt32(&repoDeps, int32(deps))
+		}
+
+		if goMod != nil {
+			deps := s.processGoDependencies(ctx, repoID, string(goMod))
+			atomic.AddInt32(&repoDeps, int32(deps))
+		}
+
+		atomic.AddInt32(totalRepos, 1)
+		atomic.AddInt32(totalDeps, repoDeps)
+		log.Info().Str("repo", repo.FullName).Int32("deps", repoDeps).Msg("repository scanned successfully")
+
+		// Update stats in real-time after each repository
+		_ = s.scanRepo.UpdateStats(ctx, scanID, int(atomic.LoadInt32(totalRepos)), int(atomic.LoadInt32(totalDeps)))
 	}
 
-	return int(repoCount), int(depCount), nil
+	return nil
 }
 
 func (s *Scanner) processNpmDependencies(ctx context.Context, repoID int64, deps map[string]string, depType string) int {

@@ -72,4 +72,13 @@ export const api = {
     }),
   getScans: () => request<ScanJob[]>('/scans'),
   getScan: (id: number) => request<ScanJob>(`/scans/${id}`),
+  getRunningScan: async (): Promise<ScanJob | null> => {
+    const response = await fetch(`${API_BASE}/scans/running`, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) return null;
+    const text = await response.text();
+    if (text === 'null' || !text) return null;
+    return JSON.parse(text);
+  },
 };

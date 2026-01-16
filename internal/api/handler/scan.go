@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -35,6 +36,10 @@ func (h *ScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 
 	scan, err := h.scheduler.TriggerScan(r.Context(), req.SourceID)
 	if err != nil {
+		if errors.Is(err, scheduler.ErrScanAlreadyRunning) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -65,6 +70,16 @@ func (h *ScanHandler) Get(w http.ResponseWriter, r *http.Request) {
 	scan, err := h.repo.GetByID(r.Context(), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	json.NewEncoder(w).Encode(scan)
+}
+
+func (h *ScanHandler) GetRunning(w http.ResponseWriter, r *http.Request) {
+	scan, err := h.repo.GetLatestRunning(r.Context())
+	if err != nil {
+		// No running scan - return null
+		w.Write([]byte("null"))
 		return
 	}
 	json.NewEncoder(w).Encode(scan)
