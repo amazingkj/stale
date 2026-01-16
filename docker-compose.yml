@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  stale:
+    image: jiin724/stale:latest
+    container_name: stale
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - stale-data:/data
+    environment:
+      - STALE_PORT=3000
+      - STALE_DB_PATH=/data/stale.db
+      - STALE_SCAN_INTERVAL=24
+      - STALE_LOG_LEVEL=info
+
+volumes:
+  stale-data:

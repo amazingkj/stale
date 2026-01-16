@@ -14,6 +14,7 @@ import (
 	"github.com/jiin/stale/internal/repository"
 	"github.com/jiin/stale/internal/service/github"
 	"github.com/jiin/stale/internal/service/gitlab"
+	"github.com/jiin/stale/internal/service/golang"
 	"github.com/jiin/stale/internal/service/maven"
 	"github.com/jiin/stale/internal/service/npm"
 	"github.com/rs/zerolog/log"
@@ -92,6 +93,7 @@ type Scanner struct {
 	scanRepo    *repository.ScanRepository
 	npmClient   *npm.Client
 	mavenClient *maven.Client
+	goClient    *golang.Client
 }
 
 type PackageJSON struct {
@@ -142,6 +144,7 @@ func New(
 		scanRepo:    scanRepo,
 		npmClient:   npm.New(),
 		mavenClient: maven.New(),
+		goClient:    golang.New(),
 	}
 }
 
@@ -162,10 +165,11 @@ func (s *Scanner) ScanAll(ctx context.Context, scanID int64) error {
 		atomic.AddInt32(&totalRepos, int32(repos))
 		atomic.AddInt32(&totalDeps, int32(deps))
 
+		// Update stats after each source for real-time progress
+		_ = s.scanRepo.UpdateStats(ctx, scanID, int(totalRepos), int(totalDeps))
 		_ = s.sourceRepo.UpdateLastScan(ctx, source.ID)
 	}
 
-	_ = s.scanRepo.UpdateStats(ctx, scanID, int(totalRepos), int(totalDeps))
 	return nil
 }
 
@@ -202,9 +206,24 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source) (int, in
 		return 0, 0, err
 	}
 
+	log.Info().Int("total_repos", len(repos)).Str("source", source.Name).Msg("fetched repositories from source")
+
+	// Filter repos if specific repositories are configured
+	if source.Repositories != "" {
+		beforeFilter := len(repos)
+		repos = filterRepositories(repos, source.Repositories)
+		log.Info().Int("before", beforeFilter).Int("after", len(repos)).Str("filter", source.Repositories).Msg("filtered repositories")
+	}
+
+	if len(repos) == 0 {
+		log.Warn().Str("source", source.Name).Msg("no repositories to scan")
+		return 0, 0, nil
+	}
+
 	var repoCount, depCount int32
 
 	for _, repo := range repos {
+		log.Info().Str("repo", repo.FullName).Str("branch", repo.DefaultBranch).Msg("scanning repository")
 		repoEntity := domain.Repository{
 			SourceID:      source.ID,
 			Name:          repo.Name,
@@ -218,6 +237,7 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source) (int, in
 
 		// Check for package.json (npm)
 		if content, err := provider.GetFileContent(ctx, repo.FullName, "package.json", repo.DefaultBranch); err == nil {
+			log.Info().Str("repo", repo.FullName).Msg("found package.json")
 			var pkg PackageJSON
 			if err := json.Unmarshal(content, &pkg); err == nil {
 				repoEntity.HasPackageJSON = true
@@ -237,6 +257,7 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source) (int, in
 
 		// Check for pom.xml (Maven)
 		if content, err := provider.GetFileContent(ctx, repo.FullName, "pom.xml", repo.DefaultBranch); err == nil {
+			log.Info().Str("repo", repo.FullName).Msg("found pom.xml")
 			var pom PomXML
 			if err := xml.Unmarshal(content, &pom); err == nil {
 				repoEntity.HasPomXML = true
@@ -255,6 +276,7 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source) (int, in
 
 		// Check for build.gradle (Gradle)
 		if content, err := provider.GetFileContent(ctx, repo.FullName, "build.gradle", repo.DefaultBranch); err == nil {
+			log.Info().Str("repo", repo.FullName).Msg("found build.gradle")
 			repoEntity.HasBuildGradle = true
 			foundManifest = true
 
@@ -270,6 +292,7 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source) (int, in
 
 		// Also check for build.gradle.kts (Kotlin DSL)
 		if content, err := provider.GetFileContent(ctx, repo.FullName, "build.gradle.kts", repo.DefaultBranch); err == nil {
+			log.Info().Str("repo", repo.FullName).Msg("found build.gradle.kts")
 			repoEntity.HasBuildGradle = true
 			foundManifest = true
 
@@ -283,9 +306,28 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source) (int, in
 			atomic.AddInt32(&totalDeps, int32(deps))
 		}
 
+		// Check for go.mod (Go)
+		if content, err := provider.GetFileContent(ctx, repo.FullName, "go.mod", repo.DefaultBranch); err == nil {
+			log.Info().Str("repo", repo.FullName).Msg("found go.mod")
+			repoEntity.HasGoMod = true
+			foundManifest = true
+
+			repoID, err := s.repoRepo.Upsert(ctx, repoEntity)
+			if err != nil {
+				log.Error().Err(err).Str("repo", repo.FullName).Msg("failed to upsert repository")
+				continue
+			}
+
+			deps := s.processGoDependencies(ctx, repoID, string(content))
+			atomic.AddInt32(&totalDeps, int32(deps))
+		}
+
 		if foundManifest {
 			atomic.AddInt32(&repoCount, 1)
 			atomic.AddInt32(&depCount, totalDeps)
+			log.Info().Str("repo", repo.FullName).Int32("deps", totalDeps).Msg("repository scanned successfully")
+		} else {
+			log.Info().Str("repo", repo.FullName).Msg("no supported manifest file found (package.json, pom.xml, build.gradle, go.mod)")
 		}
 	}
 
@@ -341,11 +383,18 @@ func (s *Scanner) processMavenDependencies(ctx context.Context, repoID int64, po
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 10)
 	var count int32
+	var skipped int32
 
 	// Process regular dependencies
 	for _, dep := range pom.Dependencies.Dependency {
 		if dep.Version == "" || strings.HasPrefix(dep.Version, "${") {
-			continue // Skip dependencies with property references
+			atomic.AddInt32(&skipped, 1)
+			log.Debug().
+				Str("groupId", dep.GroupID).
+				Str("artifactId", dep.ArtifactID).
+				Str("version", dep.Version).
+				Msg("skipping Maven dependency with property reference or empty version")
+			continue
 		}
 
 		wg.Add(1)
@@ -384,11 +433,24 @@ func (s *Scanner) processMavenDependencies(ctx context.Context, repoID int64, po
 	}
 
 	wg.Wait()
+
+	if skipped > 0 {
+		log.Info().Int32("skipped", skipped).Int32("processed", count).Msg("Maven dependencies with property references were skipped")
+	}
+
 	return int(count)
 }
 
 func (s *Scanner) processGradleDependencies(ctx context.Context, repoID int64, content string) int {
-	deps := parseGradleDependencies(content)
+	deps, skipped := parseGradleDependencies(content)
+
+	if len(skipped) > 0 {
+		for _, dep := range skipped {
+			log.Debug().Str("dependency", dep).Msg("skipping Gradle dependency with property reference")
+		}
+		log.Info().Int("skipped", len(skipped)).Msg("Gradle dependencies with property references were skipped")
+	}
+
 	if len(deps) == 0 {
 		return 0
 	}
@@ -433,8 +495,10 @@ func (s *Scanner) processGradleDependencies(ctx context.Context, repoID int64, c
 }
 
 // parseGradleDependencies extracts dependencies from build.gradle content
-func parseGradleDependencies(content string) []GradleDependency {
+// Returns parsed dependencies and a list of skipped dependency names (those with property references)
+func parseGradleDependencies(content string) ([]GradleDependency, []string) {
 	var deps []GradleDependency
+	var skipped []string
 
 	// Match patterns like: implementation 'group:name:version'
 	// or implementation "group:name:version"
@@ -450,6 +514,7 @@ func parseGradleDependencies(content string) []GradleDependency {
 			if len(match) >= 4 {
 				// Skip property references like $version
 				if strings.Contains(match[3], "$") {
+					skipped = append(skipped, match[1]+":"+match[2])
 					continue
 				}
 				deps = append(deps, GradleDependency{
@@ -461,7 +526,143 @@ func parseGradleDependencies(content string) []GradleDependency {
 		}
 	}
 
+	return deps, skipped
+}
+
+// GoModDependency represents a parsed Go module dependency
+type GoModDependency struct {
+	Path    string
+	Version string
+}
+
+func (s *Scanner) processGoDependencies(ctx context.Context, repoID int64, content string) int {
+	deps := parseGoMod(content)
+	if len(deps) == 0 {
+		return 0
+	}
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 10)
+	var count int32
+
+	for _, dep := range deps {
+		wg.Add(1)
+		go func(d GoModDependency) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			latest, err := s.goClient.GetLatestVersion(ctx, d.Path)
+			if err != nil {
+				latest = ""
+			}
+
+			depEntity := domain.Dependency{
+				RepositoryID:   repoID,
+				Name:           d.Path,
+				CurrentVersion: d.Version,
+				LatestVersion:  latest,
+				Type:           "dependency",
+				Ecosystem:      "go",
+				IsOutdated:     isOutdated(d.Version, latest),
+			}
+
+			if err := s.depRepo.Upsert(ctx, depEntity); err != nil {
+				log.Error().Err(err).Str("dep", depEntity.Name).Msg("failed to upsert go dependency")
+				return
+			}
+
+			atomic.AddInt32(&count, 1)
+		}(dep)
+	}
+
+	wg.Wait()
+	return int(count)
+}
+
+// parseGoMod parses go.mod content and extracts dependencies
+func parseGoMod(content string) []GoModDependency {
+	var deps []GoModDependency
+
+	lines := strings.Split(content, "\n")
+	inRequireBlock := false
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Skip comments
+		if strings.HasPrefix(line, "//") {
+			continue
+		}
+
+		// Check for require block start
+		if strings.HasPrefix(line, "require (") || line == "require(" {
+			inRequireBlock = true
+			continue
+		}
+
+		// Check for block end
+		if line == ")" && inRequireBlock {
+			inRequireBlock = false
+			continue
+		}
+
+		// Parse single-line require
+		if strings.HasPrefix(line, "require ") && !strings.Contains(line, "(") {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 {
+				deps = append(deps, GoModDependency{
+					Path:    parts[1],
+					Version: parts[2],
+				})
+			}
+			continue
+		}
+
+		// Parse dependencies inside require block
+		if inRequireBlock && line != "" {
+			// Remove // indirect comment
+			if idx := strings.Index(line, "//"); idx != -1 {
+				line = strings.TrimSpace(line[:idx])
+			}
+
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				deps = append(deps, GoModDependency{
+					Path:    parts[0],
+					Version: parts[1],
+				})
+			}
+		}
+	}
+
 	return deps
+}
+
+// filterRepositories filters repos based on comma-separated list of repo names
+func filterRepositories(repos []RepoInfo, filter string) []RepoInfo {
+	if filter == "" {
+		return repos
+	}
+
+	// Parse filter list (supports both "repo" and "owner/repo" formats)
+	allowedRepos := make(map[string]bool)
+	for _, r := range strings.Split(filter, ",") {
+		name := strings.TrimSpace(r)
+		if name != "" {
+			allowedRepos[strings.ToLower(name)] = true
+		}
+	}
+
+	var filtered []RepoInfo
+	for _, repo := range repos {
+		// Check both full name (owner/repo) and just repo name
+		if allowedRepos[strings.ToLower(repo.FullName)] || allowedRepos[strings.ToLower(repo.Name)] {
+			filtered = append(filtered, repo)
+		}
+	}
+
+	return filtered
 }
 
 func cleanVersion(version string) string {

@@ -12,6 +12,7 @@ type Repository struct {
 	HasPackageJSON bool       `db:"has_package_json" json:"has_package_json"`
 	HasPomXML      bool       `db:"has_pom_xml" json:"has_pom_xml"`
 	HasBuildGradle bool       `db:"has_build_gradle" json:"has_build_gradle"`
+	HasGoMod       bool       `db:"has_go_mod" json:"has_go_mod"`
 	CreatedAt      time.Time  `db:"created_at" json:"created_at"`
 	UpdatedAt      time.Time  `db:"updated_at" json:"updated_at"`
 	LastScanAt     *time.Time `db:"last_scan_at" json:"last_scan_at,omitempty"`

@@ -33,7 +33,7 @@ func New() *Client {
 // artifactID: e.g., "spring-boot-starter-web"
 func (c *Client) GetLatestVersion(ctx context.Context, groupID, artifactID string) (string, error) {
 	url := fmt.Sprintf(
-		"https://search.maven.org/solrsearch/select?q=g:%q+AND+a:%q&rows=1&wt=json",
+		"https://search.maven.org/solrsearch/select?q=g:%%22%s%%22+AND+a:%%22%s%%22&rows=1&wt=json",
 		groupID, artifactID,
 	)
 

@@ -1,25 +1,63 @@
-import type { InputHTMLAttributes } from 'react';
+import type { InputHTMLAttributes, CSSProperties } from 'react';
 
 interface Props extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
+  wrapperStyle?: CSSProperties;
 }
 
-export function Input({ label, error, className = '', ...props }: Props) {
+const inputBaseStyle: CSSProperties = {
+  width: '100%',
+  padding: '10px 12px',
+  borderRadius: '8px',
+  border: '1px solid var(--border-color)',
+  backgroundColor: 'var(--bg-card)',
+  color: 'var(--text-primary)',
+  fontSize: '14px',
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
+export function Input({ label, error, id, wrapperStyle, style, ...props }: Props) {
+  const inputId = id || (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
+
   return (
-    <div className="space-y-1">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', ...wrapperStyle }}>
       {label && (
-        <label className="block text-sm font-medium text-gray-700">
+        <label
+          htmlFor={inputId}
+          style={{
+            fontSize: '14px',
+            fontWeight: 500,
+            color: 'var(--text-primary)',
+          }}
+        >
           {label}
         </label>
       )}
       <input
-        className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm ${
-          error ? 'border-red-300' : ''
-        } ${className}`}
+        id={inputId}
+        style={{
+          ...inputBaseStyle,
+          borderColor: error ? 'var(--danger)' : 'var(--border-color)',
+          ...style,
+        }}
+        aria-invalid={error ? 'true' : undefined}
+        aria-describedby={error ? `${inputId}-error` : undefined}
         {...props}
       />
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <span
+          id={`${inputId}-error`}
+          style={{
+            fontSize: '13px',
+            color: 'var(--danger-text)',
+          }}
+          role="alert"
+        >
+          {error}
+        </span>
+      )}
     </div>
   );
 }

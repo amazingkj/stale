@@ -10,6 +10,7 @@ interface Props {
 export function SettingsPanel({ isOpen, onClose }: Props) {
   const [sources, setSources] = useState<Source[]>([]);
   const [isAddingSource, setIsAddingSource] = useState(false);
+  const [editingSource, setEditingSource] = useState<Source | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +46,12 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
     const source = await api.createSource(input);
     setSources([source, ...sources]);
     setIsAddingSource(false);
+  }
+
+  async function handleUpdate(id: number, input: SourceInput) {
+    const updated = await api.updateSource(id, input);
+    setSources(sources.map((s) => (s.id === id ? updated : s)));
+    setEditingSource(null);
   }
 
   if (!isOpen) return null;
@@ -204,21 +211,38 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
                         </div>
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleDelete(source.id)}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: '6px',
-                        border: 'none',
-                        backgroundColor: 'var(--danger-bg)',
-                        color: 'var(--danger-text)',
-                        fontSize: '12px',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Delete
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        onClick={() => setEditingSource(source)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border-color)',
+                          backgroundColor: 'transparent',
+                          color: 'var(--text-primary)',
+                          fontSize: '12px',
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(source.id)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          backgroundColor: 'var(--danger-bg)',
+                          color: 'var(--danger-text)',
+                          fontSize: '12px',
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -229,24 +253,36 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
 
       {/* Add Source Modal */}
       {isAddingSource && (
-        <AddSourceModal
+        <SourceModal
           onClose={() => setIsAddingSource(false)}
           onSubmit={handleCreate}
+        />
+      )}
+
+      {/* Edit Source Modal */}
+      {editingSource && (
+        <SourceModal
+          source={editingSource}
+          onClose={() => setEditingSource(null)}
+          onSubmit={(input) => handleUpdate(editingSource.id, input)}
         />
       )}
     </>
   );
 }
 
-function AddSourceModal({ onClose, onSubmit }: {
+function SourceModal({ source, onClose, onSubmit }: {
+  source?: Source;
   onClose: () => void;
   onSubmit: (input: SourceInput) => Promise<void>;
 }) {
-  const [sourceType, setSourceType] = useState<'github' | 'gitlab'>('github');
-  const [name, setName] = useState('');
+  const isEditing = !!source;
+  const [sourceType, setSourceType] = useState<'github' | 'gitlab'>(source?.type || 'github');
+  const [name, setName] = useState(source?.name || '');
   const [token, setToken] = useState('');
-  const [organization, setOrganization] = useState('');
-  const [url, setUrl] = useState('');
+  const [organization, setOrganization] = useState(source?.organization || '');
+  const [repositories, setRepositories] = useState(source?.repositories || '');
+  const [url, setUrl] = useState(source?.url || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -260,10 +296,11 @@ function AddSourceModal({ onClose, onSubmit }: {
         type: sourceType,
         token,
         organization: organization || undefined,
+        repositories: repositories || undefined,
         url: sourceType === 'gitlab' && url ? url : undefined,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add source');
+      setError(err instanceof Error ? err.message : (isEditing ? 'Failed to update source' : 'Failed to add source'));
       setLoading(false);
     }
   }
@@ -299,7 +336,7 @@ function AddSourceModal({ onClose, onSubmit }: {
           borderBottom: '1px solid var(--border-color)',
         }}>
           <h2 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-            Add Source
+            {isEditing ? 'Edit Source' : 'Add Source'}
           </h2>
         </div>
 
@@ -408,18 +445,20 @@ function AddSourceModal({ onClose, onSubmit }: {
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder={sourceType === 'gitlab' ? 'glpat-xxxxxxxxxxxx' : 'ghp_xxxxxxxxxxxx'}
+              placeholder={isEditing ? 'Enter new token to update' : (sourceType === 'gitlab' ? 'glpat-xxxxxxxxxxxx' : 'ghp_xxxxxxxxxxxx')}
               required
               style={inputStyle}
             />
             <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-              {sourceType === 'gitlab'
-                ? 'Requires read_api scope'
-                : 'Requires repo scope for private repos'}
+              {isEditing
+                ? 'Token is required for security verification'
+                : (sourceType === 'gitlab'
+                  ? 'Requires read_api scope'
+                  : 'Requires repo scope for private repos')}
             </p>
           </div>
 
-          <div style={{ marginBottom: '20px' }}>
+          <div style={{ marginBottom: '14px' }}>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
               {sourceType === 'gitlab' ? 'Group (optional)' : 'Organization (optional)'}
             </label>
@@ -435,6 +474,56 @@ function AddSourceModal({ onClose, onSubmit }: {
                 ? 'Leave empty to scan all accessible projects'
                 : 'Leave empty to scan personal repos'}
             </p>
+          </div>
+
+          <div style={{ marginBottom: '14px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
+              Repositories (optional)
+            </label>
+            <input
+              type="text"
+              value={repositories}
+              onChange={(e) => setRepositories(e.target.value)}
+              placeholder="repo1, owner/repo2"
+              style={inputStyle}
+            />
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+              Comma-separated. Leave empty to scan all repos.
+            </p>
+          </div>
+
+          <div style={{
+            padding: '10px',
+            borderRadius: '6px',
+            backgroundColor: 'var(--bg-primary)',
+            border: '1px solid var(--border-color)',
+            marginBottom: '20px',
+          }}>
+            <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 6px' }}>
+              {sourceType === 'github' ? 'GitHub Token' : 'GitLab Token'}
+            </p>
+            <ol style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '0 0 10px', paddingLeft: '14px', lineHeight: 1.5 }}>
+              {sourceType === 'github' ? (
+                <>
+                  <li>Go to GitHub → Settings → Developer settings</li>
+                  <li>Personal access tokens → Tokens (classic)</li>
+                  <li>Generate new token → Check <strong>repo</strong> scope</li>
+                </>
+              ) : (
+                <>
+                  <li>Go to GitLab → Preferences → Access Tokens</li>
+                  <li>Add new token → Check <strong>read_api</strong> scope</li>
+                </>
+              )}
+            </ol>
+            <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 6px' }}>
+              Repositories Filter
+            </p>
+            <ul style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0, paddingLeft: '14px', lineHeight: 1.5 }}>
+              <li><strong>All repos:</strong> Leave Repositories empty</li>
+              <li><strong>Specific repo:</strong> <code style={{ backgroundColor: 'var(--bg-card)', padding: '1px 3px', borderRadius: '2px' }}>my-repo</code> or <code style={{ backgroundColor: 'var(--bg-card)', padding: '1px 3px', borderRadius: '2px' }}>owner/my-repo</code></li>
+              <li><strong>Multiple:</strong> <code style={{ backgroundColor: 'var(--bg-card)', padding: '1px 3px', borderRadius: '2px' }}>repo1, repo2</code></li>
+            </ul>
           </div>
 
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
@@ -469,7 +558,7 @@ function AddSourceModal({ onClose, onSubmit }: {
                 opacity: loading ? 0.7 : 1,
               }}
             >
-              {loading ? 'Adding...' : 'Add Source'}
+              {loading ? (isEditing ? 'Saving...' : 'Adding...') : (isEditing ? 'Save Changes' : 'Add Source')}
             </button>
           </div>
         </form>

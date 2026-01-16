@@ -9,6 +9,7 @@ type Source struct {
 	Token        string     `db:"token" json:"-"`
 	Organization string     `db:"organization" json:"organization,omitempty"` // GitHub org or GitLab group
 	URL          string     `db:"url" json:"url,omitempty"`                   // For self-hosted GitLab
+	Repositories string     `db:"repositories" json:"repositories,omitempty"` // Comma-separated list of repos to scan (empty = all)
 	CreatedAt    time.Time  `db:"created_at" json:"created_at"`
 	UpdatedAt    time.Time  `db:"updated_at" json:"updated_at"`
 	LastScanAt   *time.Time `db:"last_scan_at" json:"last_scan_at,omitempty"`
@@ -20,4 +21,5 @@ type SourceInput struct {
 	Token        string `json:"token"`
 	Organization string `json:"organization,omitempty"`   // GitHub org or GitLab group
 	URL          string `json:"url,omitempty"`            // For self-hosted GitLab
+	Repositories string `json:"repositories,omitempty"`   // Comma-separated list of repos to scan (empty = all)
 }

@@ -44,6 +44,28 @@ func New(token, baseURL, groupPath string) *Client {
 	}
 }
 
+func (c *Client) ValidateToken(ctx context.Context) error {
+	endpoint := fmt.Sprintf("%s/api/v4/user", c.baseURL)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("PRIVATE-TOKEN", c.token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%s/api/v4/user: %d", c.baseURL, resp.StatusCode)
+	}
+
+	return nil
+}
+
 func (c *Client) ListRepositories(ctx context.Context) ([]Repository, error) {
 	var allRepos []Repository
 	page := 1

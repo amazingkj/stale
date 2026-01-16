@@ -62,7 +62,67 @@ func (r *DependencyRepository) GetAll(ctx context.Context) ([]domain.DependencyW
 	return deps, nil
 }
 
-func (r *DependencyRepository) GetOutdated(ctx context.Context) ([]domain.DependencyWithRepo, error) {
+func (r *DependencyRepository) GetPaginated(ctx context.Context, page, limit int, upgradableOnly bool, repoFilter string) (*domain.PaginatedDependencies, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	offset := (page - 1) * limit
+
+	// Build WHERE clause
+	where := "1=1"
+	args := []interface{}{}
+	if upgradableOnly {
+		where += " AND d.is_outdated = TRUE"
+	}
+	if repoFilter != "" {
+		where += " AND r.full_name = ?"
+		args = append(args, repoFilter)
+	}
+
+	// Get total count
+	countQuery := `SELECT COUNT(*) FROM dependencies d
+                   JOIN repositories r ON d.repository_id = r.id
+                   WHERE ` + where
+	var total int
+	err := r.db.GetContext(ctx, &total, countQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get paginated data
+	dataQuery := `SELECT d.*, r.name as repo_name, r.full_name as repo_full_name, s.name as source_name
+                  FROM dependencies d
+                  JOIN repositories r ON d.repository_id = r.id
+                  JOIN sources s ON r.source_id = s.id
+                  WHERE ` + where + `
+                  ORDER BY d.name
+                  LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
+
+	var deps []domain.DependencyWithRepo
+	err = r.db.SelectContext(ctx, &deps, dataQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	totalPages := (total + limit - 1) / limit
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	return &domain.PaginatedDependencies{
+		Data:       deps,
+		Total:      total,
+		Page:       page,
+		Limit:      limit,
+		TotalPages: totalPages,
+	}, nil
+}
+
+func (r *DependencyRepository) GetUpgradable(ctx context.Context) ([]domain.DependencyWithRepo, error) {
 	query := `SELECT d.*, r.name as repo_name, r.full_name as repo_full_name, s.name as source_name
               FROM dependencies d
               JOIN repositories r ON d.repository_id = r.id

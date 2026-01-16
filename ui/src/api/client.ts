@@ -1,4 +1,4 @@
-import type { Source, SourceInput, Repository, Dependency, ScanJob, DependencyStats } from '../types';
+import type { Source, SourceInput, Repository, Dependency, ScanJob, DependencyStats, PaginatedDependencies } from '../types';
 
 const API_BASE = '/api/v1';
 
@@ -32,6 +32,8 @@ export const api = {
   getSource: (id: number) => request<Source>(`/sources/${id}`),
   createSource: (data: SourceInput) =>
     request<Source>('/sources', { method: 'POST', body: JSON.stringify(data) }),
+  updateSource: (id: number, data: SourceInput) =>
+    request<Source>(`/sources/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteSource: (id: number) =>
     request<void>(`/sources/${id}`, { method: 'DELETE' }),
 
@@ -43,13 +45,23 @@ export const api = {
   getRepository: (id: number) => request<Repository>(`/repositories/${id}`),
   getRepositoryDependencies: (id: number) =>
     request<Dependency[]>(`/repositories/${id}/dependencies`),
+  deleteRepository: (id: number) =>
+    request<void>(`/repositories/${id}`, { method: 'DELETE' }),
 
   // Dependencies
-  getDependencies: (outdated?: boolean) => {
-    const params = outdated ? '?outdated=true' : '';
+  getDependencies: (upgradableOnly?: boolean) => {
+    const params = upgradableOnly ? '?outdated=true' : '';
     return request<Dependency[]>(`/dependencies${params}`);
   },
-  getOutdatedDependencies: () => request<Dependency[]>('/dependencies/outdated'),
+  getDependenciesPaginated: (page: number = 1, limit: number = 50, upgradableOnly?: boolean, repo?: string) => {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('limit', String(limit));
+    if (upgradableOnly) params.set('upgradable', 'true');
+    if (repo) params.set('repo', repo);
+    return request<PaginatedDependencies>(`/dependencies/paginated?${params.toString()}`);
+  },
+  getUpgradableDependencies: () => request<Dependency[]>('/dependencies/upgradable'),
   getDependencyStats: () => request<DependencyStats>('/dependencies/stats'),
 
   // Scans

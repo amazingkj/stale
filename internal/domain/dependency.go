@@ -27,3 +27,11 @@ type DependencyStats struct {
 	UpToDateCount     int            `json:"up_to_date_count"`
 	ByType            map[string]int `json:"by_type"`
 }
+
+type PaginatedDependencies struct {
+	Data       []DependencyWithRepo `json:"data"`
+	Total      int                  `json:"total"`
+	Page       int                  `json:"page"`
+	Limit      int                  `json:"limit"`
+	TotalPages int                  `json:"total_pages"`
+}

@@ -1,5 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api/client';
+import { selectStyle } from '../constants/styles';
+import {
+  Button,
+  Card,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  Th,
+  Td,
+  EcosystemBadge,
+  EmptyState,
+  LoadingSpinner,
+  ErrorMessage,
+} from '../components/common';
 import type { Repository, Source } from '../types';
 
 export function Repositories() {
@@ -9,24 +24,16 @@ export function Repositories() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadSources();
-  }, []);
-
-  useEffect(() => {
-    loadRepositories();
-  }, [selectedSource]);
-
-  async function loadSources() {
+  const loadSources = useCallback(async () => {
     try {
       const data = await api.getSources();
       setSources(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sources');
     }
-  }
+  }, []);
 
-  async function loadRepositories() {
+  const loadRepositories = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api.getRepositories(selectedSource);
@@ -36,32 +43,41 @@ export function Repositories() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [selectedSource]);
+
+  useEffect(() => {
+    loadSources();
+  }, [loadSources]);
+
+  useEffect(() => {
+    loadRepositories();
+  }, [loadRepositories]);
+
+  const handleRemove = useCallback(async (id: number, name: string) => {
+    if (!confirm(`Remove "${name}" from dashboard?\n(This will not delete the actual repository)`)) return;
+    try {
+      await api.deleteRepository(id);
+      setRepositories(prev => prev.filter(r => r.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove repository');
+    }
+  }, []);
+
+  const handleSourceChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedSource(e.target.value ? Number(e.target.value) : undefined);
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-            Repositories
-          </h1>
-          <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
-            {repositories.length} repositories scanned
-          </p>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px' }}>
+        <span style={{ fontSize: '14px', color: 'var(--text-secondary)', marginRight: 'auto' }}>
+          {repositories.length} repositories scanned
+        </span>
         <select
           value={selectedSource || ''}
-          onChange={(e) => setSelectedSource(e.target.value ? Number(e.target.value) : undefined)}
-          style={{
-            padding: '10px 12px',
-            borderRadius: '8px',
-            border: '1px solid var(--border-color)',
-            backgroundColor: 'var(--bg-card)',
-            color: 'var(--text-primary)',
-            fontSize: '14px',
-            outline: 'none',
-            cursor: 'pointer',
-          }}
+          onChange={handleSourceChange}
+          aria-label="Filter by source"
+          style={selectStyle}
         >
           <option value="">All Sources</option>
           {sources.map((source) => (
@@ -72,127 +88,87 @@ export function Repositories() {
         </select>
       </div>
 
-      {error && (
-        <div style={{
-          padding: '12px 16px',
-          borderRadius: '8px',
-          backgroundColor: 'var(--danger-bg)',
-          color: 'var(--danger-text)',
-          fontSize: '14px',
-        }}>
-          {error}
-        </div>
-      )}
+      {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
-          Loading...
-        </div>
+        <LoadingSpinner fullPage text="Loading..." />
       ) : repositories.length === 0 ? (
-        <div style={{
-          backgroundColor: 'var(--bg-card)',
-          borderRadius: '12px',
-          border: '1px solid var(--border-color)',
-          padding: '48px',
-          textAlign: 'center',
-        }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📁</div>
-          <p style={{ color: 'var(--text-muted)' }}>
-            No repositories found. Add a source and run a scan.
-          </p>
-        </div>
+        <Card>
+          <EmptyState
+            icon="📁"
+            description="No repositories found. Add a source and run a scan."
+          />
+        </Card>
       ) : (
-        <div style={{
-          backgroundColor: 'var(--bg-card)',
-          borderRadius: '12px',
-          border: '1px solid var(--border-color)',
-          overflow: 'hidden',
-        }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--bg-secondary)' }}>
-                  <th style={thStyle}>Repository</th>
-                  <th style={thStyle}>Branch</th>
-                  <th style={thStyle}>package.json</th>
-                  <th style={thStyle}>Last Scanned</th>
-                </tr>
-              </thead>
-              <tbody>
-                {repositories.map((repo) => (
-                  <tr key={repo.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <td style={tdStyle}>
-                      <a
-                        href={repo.html_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}
-                      >
-                        {repo.full_name}
-                      </a>
-                    </td>
-                    <td style={{ ...tdStyle, color: 'var(--text-secondary)' }}>
-                      <span style={{
-                        padding: '4px 8px',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        fontFamily: 'monospace',
-                        backgroundColor: 'var(--bg-hover)',
-                      }}>
-                        {repo.default_branch}
-                      </span>
-                    </td>
-                    <td style={tdStyle}>
-                      {repo.has_package_json ? (
-                        <span style={{
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          backgroundColor: 'var(--success-bg)',
-                          color: 'var(--success-text)',
-                        }}>
-                          Yes
-                        </span>
-                      ) : (
-                        <span style={{
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          backgroundColor: 'var(--bg-hover)',
-                          color: 'var(--text-muted)',
-                        }}>
-                          No
-                        </span>
+        <Card>
+          <Table fixed>
+            <TableHead>
+              <Th width="35%">Repository</Th>
+              <Th width="15%">Branch</Th>
+              <Th width="20%">Manifest</Th>
+              <Th width="22%">Last Scanned</Th>
+              <Th width="8%"></Th>
+            </TableHead>
+            <TableBody>
+              {repositories.map((repo) => (
+                <TableRow key={repo.id}>
+                  <Td>
+                    <a
+                      href={repo.html_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}
+                    >
+                      {repo.full_name}
+                    </a>
+                  </Td>
+                  <Td>
+                    <span style={{
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                      backgroundColor: 'var(--bg-secondary)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-color)',
+                    }}>
+                      {repo.default_branch}
+                    </span>
+                  </Td>
+                  <Td>
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                      {repo.has_package_json && <EcosystemBadge ecosystem="npm" />}
+                      {repo.has_go_mod && <EcosystemBadge ecosystem="go" />}
+                      {repo.has_pom_xml && <EcosystemBadge ecosystem="maven" />}
+                      {repo.has_build_gradle && <EcosystemBadge ecosystem="gradle" />}
+                      {!repo.has_package_json && !repo.has_go_mod && !repo.has_pom_xml && !repo.has_build_gradle && (
+                        <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>-</span>
                       )}
-                    </td>
-                    <td style={{ ...tdStyle, color: 'var(--text-muted)', fontSize: '13px' }}>
-                      {repo.last_scan_at
-                        ? new Date(repo.last_scan_at).toLocaleString()
-                        : '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                    </div>
+                  </Td>
+                  <Td muted style={{ fontSize: '13px' }}>
+                    {repo.last_scan_at
+                      ? new Date(repo.last_scan_at).toLocaleString()
+                      : '-'}
+                  </Td>
+                  <Td>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemove(repo.id, repo.full_name)}
+                      aria-label={`Remove ${repo.full_name} from dashboard`}
+                      title="Remove from dashboard"
+                    >
+                      ✕
+                    </Button>
+                  </Td>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
       )}
     </div>
   );
 }
-
-const thStyle: React.CSSProperties = {
-  padding: '12px 20px',
-  textAlign: 'left',
-  fontSize: '12px',
-  fontWeight: 600,
-  color: 'var(--text-muted)',
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px',
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: '14px 20px',
-  fontSize: '14px',
-  color: 'var(--text-primary)',
-};

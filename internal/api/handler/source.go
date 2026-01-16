@@ -10,6 +10,7 @@ import (
 	"github.com/jiin/stale/internal/domain"
 	"github.com/jiin/stale/internal/repository"
 	"github.com/jiin/stale/internal/service/github"
+	"github.com/jiin/stale/internal/service/gitlab"
 )
 
 type SourceHandler struct {
@@ -63,11 +64,19 @@ func (h *SourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		input.Type = "github"
 	}
 
-	// Validate token
-	ghClient := github.New(input.Token, input.Organization)
-	if err := ghClient.ValidateToken(context.Background()); err != nil {
-		http.Error(w, "invalid token: "+err.Error(), http.StatusBadRequest)
-		return
+	// Validate token based on source type
+	if input.Type == "gitlab" {
+		glClient := gitlab.New(input.Token, input.URL, input.Organization)
+		if err := glClient.ValidateToken(context.Background()); err != nil {
+			http.Error(w, "invalid token: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	} else {
+		ghClient := github.New(input.Token, input.Organization)
+		if err := ghClient.ValidateToken(context.Background()); err != nil {
+			http.Error(w, "invalid token: "+err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	source, err := h.repo.Create(r.Context(), input)
@@ -92,4 +101,50 @@ func (h *SourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *SourceHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	var input domain.SourceInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if input.Name == "" || input.Token == "" {
+		http.Error(w, "name and token are required", http.StatusBadRequest)
+		return
+	}
+
+	if input.Type == "" {
+		input.Type = "github"
+	}
+
+	// Validate token based on source type
+	if input.Type == "gitlab" {
+		glClient := gitlab.New(input.Token, input.URL, input.Organization)
+		if err := glClient.ValidateToken(context.Background()); err != nil {
+			http.Error(w, "invalid token: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	} else {
+		ghClient := github.New(input.Token, input.Organization)
+		if err := ghClient.ValidateToken(context.Background()); err != nil {
+			http.Error(w, "invalid token: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	source, err := h.repo.Update(r.Context(), id, input)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(source)
 }

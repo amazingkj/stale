@@ -1,18 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api/client';
+import {
+  Button,
+  Card,
+  Modal,
+  Input,
+  EmptyState,
+  LoadingSpinner,
+  ErrorMessage,
+} from '../components/common';
 import type { Source, SourceInput } from '../types';
 
 export function Sources() {
   const [sources, setSources] = useState<Source[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingSource, setEditingSource] = useState<Source | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadSources();
-  }, []);
-
-  async function loadSources() {
+  const loadSources = useCallback(async () => {
     try {
       const data = await api.getSources();
       setSources(data);
@@ -21,30 +27,36 @@ export function Sources() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function handleDelete(id: number) {
+  useEffect(() => {
+    loadSources();
+  }, [loadSources]);
+
+  const handleDelete = useCallback(async (id: number) => {
     if (!confirm('Are you sure? All associated data will be removed.')) return;
     try {
       await api.deleteSource(id);
-      setSources(sources.filter((s) => s.id !== id));
+      setSources(prev => prev.filter((s) => s.id !== id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete source');
     }
-  }
+  }, []);
 
-  async function handleCreate(input: SourceInput) {
+  const handleCreate = useCallback(async (input: SourceInput) => {
     const source = await api.createSource(input);
-    setSources([source, ...sources]);
+    setSources(prev => [source, ...prev]);
     setIsModalOpen(false);
-  }
+  }, []);
+
+  const handleUpdate = useCallback(async (id: number, input: SourceInput) => {
+    const updated = await api.updateSource(id, input);
+    setSources(prev => prev.map((s) => (s.id === id ? updated : s)));
+    setEditingSource(null);
+  }, []);
 
   if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
-        Loading...
-      </div>
-    );
+    return <LoadingSpinner fullPage text="Loading..." />;
   }
 
   return (
@@ -55,297 +67,296 @@ export function Sources() {
             Sources
           </h1>
           <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
-            Manage GitHub connections
+            Manage GitHub/GitLab connections
           </p>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          style={{
-            padding: '10px 20px',
-            borderRadius: '8px',
-            border: 'none',
-            backgroundColor: 'var(--accent)',
-            color: 'white',
-            fontSize: '14px',
-            fontWeight: 500,
-            cursor: 'pointer',
-          }}
-        >
-          Add Source
-        </button>
+        <Button onClick={() => setIsModalOpen(true)}>Add Source</Button>
       </div>
 
-      {error && (
-        <div style={{
-          padding: '12px 16px',
-          borderRadius: '8px',
-          backgroundColor: 'var(--danger-bg)',
-          color: 'var(--danger-text)',
-          fontSize: '14px',
-        }}>
-          {error}
-        </div>
-      )}
+      {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
 
       {sources.length === 0 ? (
-        <div style={{
-          backgroundColor: 'var(--bg-card)',
-          borderRadius: '12px',
-          border: '1px solid var(--border-color)',
-          padding: '48px',
-          textAlign: 'center',
-        }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔗</div>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '16px' }}>
-            No sources configured yet
-          </p>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            style={{
-              padding: '10px 20px',
-              borderRadius: '8px',
-              border: 'none',
-              backgroundColor: 'var(--accent)',
-              color: 'white',
-              fontSize: '14px',
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
-          >
-            Add your first source
-          </button>
-        </div>
+        <Card>
+          <EmptyState
+            icon="🔗"
+            description="No sources configured yet"
+            action={
+              <Button onClick={() => setIsModalOpen(true)}>
+                Add your first source
+              </Button>
+            }
+          />
+        </Card>
       ) : (
         <div style={{ display: 'grid', gap: '12px' }}>
           {sources.map((source) => (
-            <div
+            <SourceCard
               key={source.id}
-              style={{
-                backgroundColor: 'var(--bg-card)',
-                borderRadius: '12px',
-                border: '1px solid var(--border-color)',
-                padding: '20px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '24px' }}>
-                    {source.type === 'github' ? '🐙' : '📦'}
-                  </span>
-                  <div>
-                    <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                      {source.name}
-                    </h3>
-                    <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
-                      {source.organization || 'Personal repositories'}
-                    </p>
-                  </div>
-                </div>
-                {source.last_scan_at && (
-                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '12px 0 0', paddingLeft: '36px' }}>
-                    Last scanned: {new Date(source.last_scan_at).toLocaleString()}
-                  </p>
-                )}
-              </div>
-              <button
-                onClick={() => handleDelete(source.id)}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  backgroundColor: 'var(--danger-bg)',
-                  color: 'var(--danger-text)',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                Delete
-              </button>
-            </div>
+              source={source}
+              onEdit={() => setEditingSource(source)}
+              onDelete={() => handleDelete(source.id)}
+            />
           ))}
         </div>
       )}
 
       {isModalOpen && (
-        <AddSourceModal
+        <SourceModal
           onClose={() => setIsModalOpen(false)}
           onSubmit={handleCreate}
+        />
+      )}
+
+      {editingSource && (
+        <SourceModal
+          source={editingSource}
+          onClose={() => setEditingSource(null)}
+          onSubmit={(input) => handleUpdate(editingSource.id, input)}
         />
       )}
     </div>
   );
 }
 
-function AddSourceModal({ onClose, onSubmit }: {
+interface SourceCardProps {
+  source: Source;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function SourceCard({ source, onEdit, onDelete }: SourceCardProps) {
+  return (
+    <Card style={{ padding: '20px' }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '24px' }}>
+              {source.type === 'github' ? '🐙' : '🦊'}
+            </span>
+            <div>
+              <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                {source.name}
+              </h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
+                {source.organization || 'Personal repositories'}
+                {source.repositories && (
+                  <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                    ({source.repositories.split(',').length} repo{source.repositories.split(',').length > 1 ? 's' : ''} selected)
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+          {source.last_scan_at && (
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '12px 0 0', paddingLeft: '36px' }}>
+              Last scanned: {new Date(source.last_scan_at).toLocaleString()}
+            </p>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <Button variant="secondary" size="sm" onClick={onEdit}>
+            Edit
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            style={{
+              backgroundColor: 'var(--danger-bg)',
+              color: 'var(--danger-text)',
+            }}
+          >
+            Delete
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+interface SourceModalProps {
+  source?: Source;
   onClose: () => void;
   onSubmit: (input: SourceInput) => Promise<void>;
-}) {
-  const [name, setName] = useState('');
+}
+
+function SourceModal({ source, onClose, onSubmit }: SourceModalProps) {
+  const isEditing = !!source;
+  const [name, setName] = useState(source?.name || '');
+  const [type, setType] = useState<'github' | 'gitlab'>(source?.type || 'github');
   const [token, setToken] = useState('');
-  const [organization, setOrganization] = useState('');
+  const [organization, setOrganization] = useState(source?.organization || '');
+  const [url, setUrl] = useState(source?.url || '');
+  const [repositories, setRepositories] = useState(source?.repositories || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     try {
-      await onSubmit({ name, type: 'github', token, organization: organization || undefined });
+      await onSubmit({
+        name,
+        type,
+        token,
+        organization: organization || undefined,
+        url: url || undefined,
+        repositories: repositories || undefined,
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add source');
+      setError(err instanceof Error ? err.message : (isEditing ? 'Failed to update source' : 'Failed to add source'));
       setLoading(false);
     }
-  }
+  }, [name, type, token, organization, url, repositories, isEditing, onSubmit]);
 
   return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      zIndex: 100,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '16px',
-    }}>
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        }}
-        onClick={onClose}
-      />
-      <div style={{
-        position: 'relative',
-        backgroundColor: 'var(--bg-card)',
-        borderRadius: '16px',
-        width: '100%',
-        maxWidth: '480px',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-      }}>
-        <div style={{
-          padding: '20px 24px',
-          borderBottom: '1px solid var(--border-color)',
-        }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-            Add GitHub Source
-          </h2>
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={isEditing ? `Edit ${type === 'github' ? 'GitHub' : 'GitLab'} Source` : 'Add Source'}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button loading={loading} onClick={handleSubmit}>
+            {isEditing ? 'Save Changes' : 'Add Source'}
+          </Button>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
+
+        {!isEditing && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>
+              Type
+            </label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Button
+                type="button"
+                variant={type === 'github' ? 'primary' : 'secondary'}
+                size="sm"
+                onClick={() => setType('github')}
+              >
+                🐙 GitHub
+              </Button>
+              <Button
+                type="button"
+                variant={type === 'gitlab' ? 'primary' : 'secondary'}
+                size="sm"
+                onClick={() => setType('gitlab')}
+              >
+                🦊 GitLab
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <Input
+          label="Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={type === 'github' ? 'My GitHub Org' : 'My GitLab Org'}
+          required
+        />
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <Input
+            label="Personal Access Token"
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder={isEditing ? 'Enter new token to update' : (type === 'github' ? 'ghp_xxxxxxxxxxxx' : 'glpat-xxxxxxxxxxxx')}
+            required
+          />
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
+            {isEditing ? 'Token is required for security verification' : (type === 'github' ? 'Requires repo scope for private repos' : 'Requires read_api and read_repository scopes')}
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ padding: '24px' }}>
-          {error && (
-            <div style={{
-              padding: '12px',
-              borderRadius: '8px',
-              backgroundColor: 'var(--danger-bg)',
-              color: 'var(--danger-text)',
-              fontSize: '13px',
-              marginBottom: '16px',
-            }}>
-              {error}
-            </div>
-          )}
-
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
-              Name
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My GitHub Org"
-              required
-              style={inputStyle}
+        {type === 'gitlab' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <Input
+              label="GitLab URL (optional)"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://gitlab.example.com"
             />
-          </div>
-
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
-              Personal Access Token
-            </label>
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="ghp_xxxxxxxxxxxx"
-              required
-              style={inputStyle}
-            />
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
-              Requires repo scope for private repos
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
+              Leave empty for gitlab.com, or enter your self-hosted GitLab URL
             </p>
           </div>
+        )}
 
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
-              Organization (optional)
-            </label>
-            <input
-              type="text"
-              value={organization}
-              onChange={(e) => setOrganization(e.target.value)}
-              placeholder="my-org"
-              style={inputStyle}
-            />
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
-              Leave empty to scan personal repos
-            </p>
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <Input
+            label="Organization (optional)"
+            value={organization}
+            onChange={(e) => setOrganization(e.target.value)}
+            placeholder={type === 'github' ? 'my-org' : 'my-group'}
+          />
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
+            Leave empty to scan personal repos
+          </p>
+        </div>
 
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                padding: '10px 20px',
-                borderRadius: '8px',
-                border: '1px solid var(--border-color)',
-                backgroundColor: 'transparent',
-                color: 'var(--text-primary)',
-                fontSize: '14px',
-                fontWeight: 500,
-                cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                padding: '10px 20px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: 'var(--accent)',
-                color: 'white',
-                fontSize: '14px',
-                fontWeight: 500,
-                cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.7 : 1,
-              }}
-            >
-              {loading ? 'Adding...' : 'Add Source'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <Input
+            label="Repositories (optional)"
+            value={repositories}
+            onChange={(e) => setRepositories(e.target.value)}
+            placeholder="repo1, owner/repo2"
+          />
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
+            Comma-separated list of repos to scan. Leave empty to scan all repos.
+          </p>
+        </div>
+
+        <HelpSection type={type} />
+      </form>
+    </Modal>
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '10px 12px',
-  borderRadius: '8px',
-  border: '1px solid var(--border-color)',
-  backgroundColor: 'var(--bg-primary)',
-  color: 'var(--text-primary)',
-  fontSize: '14px',
-  outline: 'none',
-};
+function HelpSection({ type }: { type: 'github' | 'gitlab' }) {
+  return (
+    <div style={{
+      padding: '12px',
+      borderRadius: '8px',
+      backgroundColor: 'var(--bg-primary)',
+      border: '1px solid var(--border-color)',
+    }}>
+      <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 8px' }}>
+        {type === 'github' ? 'GitHub Token' : 'GitLab Token'}
+      </p>
+      {type === 'github' ? (
+        <ol style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 12px', paddingLeft: '16px', lineHeight: 1.6 }}>
+          <li>Go to GitHub → Settings → Developer settings</li>
+          <li>Personal access tokens → Tokens (classic)</li>
+          <li>Generate new token → Check <strong>repo</strong> scope</li>
+        </ol>
+      ) : (
+        <ol style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 12px', paddingLeft: '16px', lineHeight: 1.6 }}>
+          <li>Go to GitLab → Preferences → Access Tokens</li>
+          <li>Create a personal access token</li>
+          <li>Select <strong>read_api</strong> and <strong>read_repository</strong> scopes</li>
+        </ol>
+      )}
+      <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 8px' }}>
+        Repositories Filter
+      </p>
+      <ul style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, paddingLeft: '16px', lineHeight: 1.6 }}>
+        <li><strong>Scan all repos:</strong> Leave Repositories empty</li>
+        <li><strong>Scan specific repo:</strong> <code style={{ backgroundColor: 'var(--bg-card)', padding: '1px 4px', borderRadius: '3px' }}>my-repo</code> or <code style={{ backgroundColor: 'var(--bg-card)', padding: '1px 4px', borderRadius: '3px' }}>owner/my-repo</code></li>
+        <li><strong>Scan multiple repos:</strong> <code style={{ backgroundColor: 'var(--bg-card)', padding: '1px 4px', borderRadius: '3px' }}>repo1, repo2</code></li>
+      </ul>
+    </div>
+  );
+}

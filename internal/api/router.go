@@ -5,10 +5,12 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jiin/stale/internal/api/handler"
+	apimiddleware "github.com/jiin/stale/internal/api/middleware"
 	"github.com/jiin/stale/internal/repository"
 	"github.com/jiin/stale/internal/service/scheduler"
 	"github.com/jiin/stale/ui"
@@ -25,6 +27,14 @@ func NewRouter(
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
+
+	// CORS configuration
+	corsConfig := apimiddleware.DefaultCORSConfig()
+	r.Use(apimiddleware.CORS(corsConfig))
+
+	// Rate limiting: 100 requests per second per client
+	rateLimiter := apimiddleware.NewRateLimiter(100, time.Second)
+	r.Use(rateLimiter.Handler)
 
 	// Repositories
 	sourceRepo := repository.NewSourceRepository(db)
@@ -49,6 +59,7 @@ func NewRouter(
 			r.Get("/", sourceHandler.List)
 			r.Post("/", sourceHandler.Create)
 			r.Get("/{id}", sourceHandler.Get)
+			r.Put("/{id}", sourceHandler.Update)
 			r.Delete("/{id}", sourceHandler.Delete)
 		})
 
@@ -56,12 +67,15 @@ func NewRouter(
 			r.Get("/", repoHandler.List)
 			r.Get("/{id}", repoHandler.Get)
 			r.Get("/{id}/dependencies", repoHandler.GetDependencies)
+			r.Delete("/{id}", repoHandler.Delete)
 		})
 
 		r.Route("/dependencies", func(r chi.Router) {
 			r.Get("/", depHandler.List)
-			r.Get("/outdated", depHandler.GetOutdated)
+			r.Get("/paginated", depHandler.ListPaginated)
+			r.Get("/upgradable", depHandler.GetUpgradable)
 			r.Get("/stats", depHandler.GetStats)
+			r.Get("/export", depHandler.ExportCSV)
 		})
 
 		r.Route("/scans", func(r chi.Router) {

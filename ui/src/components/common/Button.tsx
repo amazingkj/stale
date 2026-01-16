@@ -1,11 +1,53 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, ReactNode, CSSProperties } from 'react';
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
-  variant?: 'primary' | 'secondary' | 'danger';
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
 }
+
+const baseStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontWeight: 500,
+  borderRadius: 'var(--radius-md)',
+  transition: 'all 0.15s ease',
+  cursor: 'pointer',
+  border: 'none',
+  outline: 'none',
+  gap: '8px',
+};
+
+const variantStyles: Record<NonNullable<Props['variant']>, CSSProperties> = {
+  primary: {
+    background: 'var(--accent-gradient)',
+    color: 'white',
+    boxShadow: '0 1px 2px 0 rgba(59, 130, 246, 0.3)',
+  },
+  secondary: {
+    backgroundColor: 'var(--bg-card)',
+    color: 'var(--text-primary)',
+    border: '1px solid var(--border-color)',
+    boxShadow: 'var(--shadow-sm)',
+  },
+  danger: {
+    backgroundColor: 'var(--danger)',
+    color: 'white',
+    boxShadow: '0 1px 2px 0 rgba(239, 68, 68, 0.3)',
+  },
+  ghost: {
+    backgroundColor: 'transparent',
+    color: 'var(--text-muted)',
+  },
+};
+
+const sizeStyles: Record<NonNullable<Props['size']>, CSSProperties> = {
+  sm: { padding: '6px 12px', fontSize: '13px' },
+  md: { padding: '10px 18px', fontSize: '14px' },
+  lg: { padding: '12px 24px', fontSize: '15px' },
+};
 
 export function Button({
   children,
@@ -13,51 +55,96 @@ export function Button({
   size = 'md',
   loading = false,
   disabled,
-  className = '',
+  style,
+  onMouseEnter,
+  onMouseLeave,
   ...props
 }: Props) {
-  const baseStyles = 'inline-flex items-center justify-center font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2';
+  const isDisabled = disabled || loading;
 
-  const variantStyles = {
-    primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 disabled:bg-blue-400',
-    secondary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-blue-500',
-    danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 disabled:bg-red-400',
+  const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!isDisabled) {
+      if (variant === 'primary') {
+        e.currentTarget.style.transform = 'translateY(-1px)';
+        e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(59, 130, 246, 0.4)';
+      } else if (variant === 'secondary') {
+        e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+        e.currentTarget.style.borderColor = 'var(--text-muted)';
+      } else if (variant === 'danger') {
+        e.currentTarget.style.transform = 'translateY(-1px)';
+        e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(239, 68, 68, 0.4)';
+      } else if (variant === 'ghost') {
+        e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+        e.currentTarget.style.color = 'var(--text-primary)';
+      }
+    }
+    onMouseEnter?.(e);
   };
 
-  const sizeStyles = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-sm',
-    lg: 'px-6 py-3 text-base',
+  const handleMouseLeave = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!isDisabled) {
+      if (variant === 'primary') {
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.boxShadow = '0 1px 2px 0 rgba(59, 130, 246, 0.3)';
+      } else if (variant === 'secondary') {
+        e.currentTarget.style.backgroundColor = 'var(--bg-card)';
+        e.currentTarget.style.borderColor = 'var(--border-color)';
+      } else if (variant === 'danger') {
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.boxShadow = '0 1px 2px 0 rgba(239, 68, 68, 0.3)';
+      } else if (variant === 'ghost') {
+        e.currentTarget.style.backgroundColor = 'transparent';
+        e.currentTarget.style.color = 'var(--text-muted)';
+      }
+    }
+    onMouseLeave?.(e);
   };
 
   return (
     <button
-      className={`${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
-      disabled={disabled || loading}
+      style={{
+        ...baseStyle,
+        ...variantStyles[variant],
+        ...sizeStyles[size],
+        opacity: isDisabled ? 0.6 : 1,
+        cursor: isDisabled ? 'not-allowed' : 'pointer',
+        ...style,
+      }}
+      disabled={isDisabled}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       {...props}
     >
-      {loading && (
-        <svg
-          className="animate-spin -ml-1 mr-2 h-4 w-4"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
-      )}
+      {loading && <Spinner />}
       {children}
     </button>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      style={{ animation: 'spin 1s linear infinite' }}
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="3"
+        fill="none"
+        opacity="0.25"
+      />
+      <path
+        d="M12 2a10 10 0 0 1 10 10"
+        stroke="currentColor"
+        strokeWidth="3"
+        fill="none"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }

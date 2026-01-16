@@ -83,3 +83,25 @@ func (h *RepoHandler) GetDependencies(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewEncoder(w).Encode(deps)
 }
+
+func (h *RepoHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	// Delete dependencies first
+	if err := h.depRepo.DeleteByRepoID(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete repository
+	if err := h.repo.Delete(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -4,6 +4,7 @@ export interface Source {
   type: 'github' | 'gitlab';
   organization?: string;
   url?: string;  // For self-hosted GitLab
+  repositories?: string;  // Comma-separated list of repos to scan
   created_at: string;
   updated_at: string;
   last_scan_at?: string;
@@ -15,6 +16,7 @@ export interface SourceInput {
   token: string;
   organization?: string;
   url?: string;  // For self-hosted GitLab
+  repositories?: string;  // Comma-separated list of repos to scan
 }
 
 export interface Repository {
@@ -27,6 +29,7 @@ export interface Repository {
   has_package_json: boolean;
   has_pom_xml: boolean;
   has_build_gradle: boolean;
+  has_go_mod: boolean;
   created_at: string;
   updated_at: string;
   last_scan_at?: string;
@@ -39,7 +42,7 @@ export interface Dependency {
   current_version: string;
   latest_version: string;
   type: 'dependency' | 'devDependency';
-  ecosystem: 'npm' | 'maven' | 'gradle';
+  ecosystem: 'npm' | 'maven' | 'gradle' | 'go';
   is_outdated: boolean;
   updated_at: string;
   // Joined fields
@@ -68,4 +71,12 @@ export interface DependencyStats {
     dependency?: number;
     devDependency?: number;
   };
+}
+
+export interface PaginatedDependencies {
+  data: Dependency[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
 }

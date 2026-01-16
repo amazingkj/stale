@@ -28,6 +28,8 @@ func Migrate(db *sqlx.DB) error {
 		"migrations/001_initial.sql",
 		"migrations/002_add_ecosystem.sql",
 		"migrations/003_add_gitlab.sql",
+		"migrations/004_add_repositories.sql",
+		"migrations/005_add_go_mod.sql",
 	}
 
 	for _, file := range migrationFiles {

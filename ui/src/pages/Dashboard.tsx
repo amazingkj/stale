@@ -1,18 +1,138 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
-import type { DependencyStats, Dependency, ScanJob } from '../types';
+import { getPackageUrl } from '../utils';
+import { selectStyle } from '../constants/styles';
+import {
+  Button,
+  Card,
+  CardHeader,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  Th,
+  Td,
+  TypeBadge,
+  VersionBadge,
+  EmptyState,
+  LoadingSpinner,
+  ErrorMessage,
+  StatCard,
+} from '../components/common';
+import type { Dependency, ScanJob } from '../types';
+
+type CardFilter = 'all' | 'upgradable' | 'uptodate' | 'prod' | 'dev';
+
+const filterLabels: Record<CardFilter, string> = {
+  all: 'All Dependencies',
+  upgradable: 'Upgradable Dependencies',
+  uptodate: 'Up to Date Dependencies',
+  prod: 'Production Dependencies',
+  dev: 'Development Dependencies',
+};
 
 export function Dashboard() {
-  const [stats, setStats] = useState<DependencyStats | null>(null);
-  const [outdated, setOutdated] = useState<Dependency[]>([]);
+  const [allDeps, setAllDeps] = useState<Dependency[]>([]);
   const [scanning, setScanning] = useState(false);
   const [currentScan, setCurrentScan] = useState<ScanJob | null>(null);
+  const [lastScanTime, setLastScanTime] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRepo, setSelectedRepo] = useState<string>('all');
+  const [cardFilter, setCardFilter] = useState<CardFilter>('all');
+  const [search, setSearch] = useState('');
+
+  // Extract unique repositories from dependencies
+  const repositories = useMemo(() => {
+    const repoSet = new Set<string>();
+    allDeps.forEach(dep => {
+      if (dep.repo_full_name) {
+        repoSet.add(dep.repo_full_name);
+      }
+    });
+    return Array.from(repoSet).sort();
+  }, [allDeps]);
+
+  // Filter dependencies by selected repo
+  const repoFilteredDeps = useMemo(() => {
+    if (selectedRepo === 'all') return allDeps;
+    return allDeps.filter(dep => dep.repo_full_name === selectedRepo);
+  }, [allDeps, selectedRepo]);
+
+  // Compute stats from repo-filtered deps
+  const stats = useMemo(() => {
+    const total = repoFilteredDeps.length;
+    const outdated = repoFilteredDeps.filter(d => d.is_outdated).length;
+    const byType: Record<string, number> = {};
+    repoFilteredDeps.forEach(dep => {
+      byType[dep.type] = (byType[dep.type] || 0) + 1;
+    });
+    return {
+      total_dependencies: total,
+      outdated_count: outdated,
+      up_to_date_count: total - outdated,
+      by_type: byType,
+    };
+  }, [repoFilteredDeps]);
+
+  // Apply card filter and search
+  const displayDeps = useMemo(() => {
+    let deps = repoFilteredDeps;
+
+    // Apply card filter
+    switch (cardFilter) {
+      case 'upgradable':
+        deps = deps.filter(d => d.is_outdated);
+        break;
+      case 'uptodate':
+        deps = deps.filter(d => !d.is_outdated);
+        break;
+      case 'prod':
+        deps = deps.filter(d => d.type === 'dependency');
+        break;
+      case 'dev':
+        deps = deps.filter(d => d.type === 'devDependency');
+        break;
+    }
+
+    // Apply search
+    if (search) {
+      const searchLower = search.toLowerCase();
+      deps = deps.filter(d =>
+        d.name.toLowerCase().includes(searchLower) ||
+        d.repo_full_name?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    return deps;
+  }, [repoFilteredDeps, cardFilter, search]);
+
+  const loadData = useCallback(async () => {
+    try {
+      const [deps, scans] = await Promise.all([
+        api.getDependencies(),
+        api.getScans(),
+      ]);
+      setAllDeps(deps);
+
+      // Find the last completed scan
+      const completedScans = scans.filter(s => s.status === 'completed' && s.finished_at);
+      if (completedScans.length > 0) {
+        const lastScan = completedScans.reduce((latest, scan) => {
+          if (!latest.finished_at) return scan;
+          if (!scan.finished_at) return latest;
+          return new Date(scan.finished_at) > new Date(latest.finished_at) ? scan : latest;
+        });
+        setLastScanTime(lastScan.finished_at || null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load data');
+    }
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   useEffect(() => {
     if (!currentScan || currentScan.status === 'completed' || currentScan.status === 'failed') {
@@ -30,25 +150,12 @@ export function Dashboard() {
       } catch {
         // Ignore polling errors
       }
-    }, 2000);
+    }, 5000);
 
     return () => clearInterval(interval);
-  }, [currentScan]);
+  }, [currentScan, loadData]);
 
-  async function loadData() {
-    try {
-      const [statsData, outdatedData] = await Promise.all([
-        api.getDependencyStats(),
-        api.getOutdatedDependencies(),
-      ]);
-      setStats(statsData);
-      setOutdated(outdatedData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data');
-    }
-  }
-
-  async function handleScan() {
+  const handleScan = useCallback(async () => {
     setScanning(true);
     setError(null);
     try {
@@ -58,59 +165,77 @@ export function Dashboard() {
       setScanning(false);
       setError(err instanceof Error ? err.message : 'Failed to start scan');
     }
-  }
+  }, []);
 
-  const outdatedPercent = stats && stats.total_dependencies > 0
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearch(e.target.value);
+  }, []);
+
+  const handleRepoChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedRepo(e.target.value);
+  }, []);
+
+  const outdatedPercent = stats.total_dependencies > 0
     ? Math.round((stats.outdated_count / stats.total_dependencies) * 100)
     : 0;
 
+  const formatLastScanTime = (dateStr: string | null) => {
+    if (!dateStr) return null;
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-            Dashboard
-          </h1>
-          <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
-            Overview of dependency versions across repositories
-          </p>
-        </div>
-        <button
-          onClick={handleScan}
-          disabled={scanning}
+      {/* Controls */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <input
+          type="text"
+          value={search}
+          onChange={handleSearchChange}
+          placeholder="Search packages..."
+          aria-label="Search packages"
           style={{
-            padding: '10px 20px',
-            borderRadius: '8px',
-            border: 'none',
-            backgroundColor: 'var(--accent)',
-            color: 'white',
-            fontSize: '14px',
-            fontWeight: 500,
-            cursor: scanning ? 'not-allowed' : 'pointer',
-            opacity: scanning ? 0.7 : 1,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
+            ...selectStyle,
+            width: '200px',
+          }}
+        />
+        <select
+          value={selectedRepo}
+          onChange={handleRepoChange}
+          aria-label="Filter by repository"
+          style={{
+            ...selectStyle,
+            minWidth: '200px',
           }}
         >
-          {scanning && <Spinner />}
+          <option value="all">All Repositories ({repositories.length})</option>
+          {repositories.map(repo => (
+            <option key={repo} value={repo}>{repo}</option>
+          ))}
+        </select>
+        {lastScanTime && !scanning && (
+          <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+            Last scan: {formatLastScanTime(lastScanTime)}
+          </span>
+        )}
+        <Button onClick={handleScan} loading={scanning}>
           {scanning ? 'Scanning...' : 'Scan All'}
-        </button>
+        </Button>
       </div>
 
       {/* Error */}
-      {error && (
-        <div style={{
-          padding: '12px 16px',
-          borderRadius: '8px',
-          backgroundColor: 'var(--danger-bg)',
-          color: 'var(--danger-text)',
-          fontSize: '14px',
-        }}>
-          {error}
-        </div>
-      )}
+      {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
 
       {/* Scan Progress */}
       {currentScan && currentScan.status === 'running' && (
@@ -124,7 +249,7 @@ export function Dashboard() {
           alignItems: 'center',
           gap: '8px',
         }}>
-          <Spinner />
+          <LoadingSpinner size="sm" />
           Scanning... Found {currentScan.repos_found} repos, {currentScan.deps_found} dependencies
         </div>
       )}
@@ -132,199 +257,131 @@ export function Dashboard() {
       {/* Stats Grid */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
         gap: '16px',
       }}>
         <StatCard
-          label="Total Dependencies"
-          value={stats?.total_dependencies ?? 0}
+          label="Total"
+          value={stats.total_dependencies}
           color="accent"
+          active={cardFilter === 'all'}
+          onClick={() => setCardFilter('all')}
         />
         <StatCard
-          label="Outdated"
-          value={stats?.outdated_count ?? 0}
-          subtitle={stats?.total_dependencies ? `${outdatedPercent}% of total` : undefined}
+          label="Upgradable"
+          value={stats.outdated_count}
+          subtitle={stats.total_dependencies ? `${outdatedPercent}%` : undefined}
           color="danger"
+          active={cardFilter === 'upgradable'}
+          onClick={() => setCardFilter('upgradable')}
         />
         <StatCard
           label="Up to Date"
-          value={stats?.up_to_date_count ?? 0}
+          value={stats.up_to_date_count}
           color="success"
+          active={cardFilter === 'uptodate'}
+          onClick={() => setCardFilter('uptodate')}
         />
         <StatCard
           label="Production"
-          value={stats?.by_type?.dependency ?? 0}
+          value={stats.by_type?.dependency ?? 0}
           color="warning"
+          active={cardFilter === 'prod'}
+          onClick={() => setCardFilter('prod')}
+        />
+        <StatCard
+          label="Development"
+          value={stats.by_type?.devDependency ?? 0}
+          color="accent"
+          active={cardFilter === 'dev'}
+          onClick={() => setCardFilter('dev')}
         />
       </div>
 
-      {/* Outdated Table */}
-      <div style={{
-        backgroundColor: 'var(--bg-card)',
-        borderRadius: '12px',
-        border: '1px solid var(--border-color)',
-        overflow: 'hidden',
-      }}>
-        <div style={{
-          padding: '16px 20px',
-          borderBottom: '1px solid var(--border-color)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <h2 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-            Outdated Dependencies
-          </h2>
+      {/* Dependencies Table */}
+      <Card>
+        <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h2 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+              {filterLabels[cardFilter]}
+            </h2>
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+              ({displayDeps.length})
+            </span>
+          </div>
           <Link
-            to="/dependencies"
+            to={cardFilter === 'all' ? '/dependencies' : `/dependencies?filter=${cardFilter}`}
             style={{
               fontSize: '13px',
               color: 'var(--accent)',
               textDecoration: 'none',
             }}
           >
-            View all →
+            View all {displayDeps.length} →
           </Link>
-        </div>
+        </CardHeader>
 
-        {outdated.length === 0 ? (
-          <div style={{
-            padding: '48px 20px',
-            textAlign: 'center',
-            color: 'var(--text-muted)',
-          }}>
-            {stats?.total_dependencies === 0
-              ? 'No dependencies found. Add a source and scan to get started.'
-              : 'All dependencies are up to date!'}
-          </div>
+        {displayDeps.length === 0 ? (
+          <EmptyState
+            icon={stats.total_dependencies === 0 ? '📦' : undefined}
+            description={
+              stats.total_dependencies === 0
+                ? 'No dependencies found. Add a source and scan to get started.'
+                : search
+                  ? 'No dependencies matching your search.'
+                  : 'No dependencies in this category.'
+            }
+          />
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--bg-secondary)' }}>
-                  <th style={thStyle}>Package</th>
-                  <th style={thStyle}>Repository</th>
-                  <th style={thStyle}>Current</th>
-                  <th style={thStyle}>Latest</th>
-                </tr>
-              </thead>
-              <tbody>
-                {outdated.slice(0, 10).map((dep) => (
-                  <tr key={dep.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <td style={tdStyle}>
+          <>
+            <Table fixed>
+              <TableHead>
+                <Th width="35%">Package</Th>
+                <Th width="30%">Repository</Th>
+                <Th width="17.5%">Current</Th>
+                <Th width="17.5%">Latest</Th>
+              </TableHead>
+              <TableBody>
+                {displayDeps.slice(0, 20).map((dep) => (
+                  <TableRow key={dep.id}>
+                    <Td>
                       <a
-                        href={`https://www.npmjs.com/package/${dep.name}`}
+                        href={getPackageUrl(dep.name, dep.ecosystem)}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}
                       >
                         {dep.name}
                       </a>
-                      <span style={{
-                        marginLeft: '8px',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        fontSize: '11px',
-                        backgroundColor: dep.type === 'dependency' ? 'var(--warning-bg)' : 'var(--bg-hover)',
-                        color: dep.type === 'dependency' ? 'var(--warning-text)' : 'var(--text-muted)',
-                      }}>
-                        {dep.type === 'dependency' ? 'prod' : 'dev'}
+                      <span style={{ marginLeft: '8px' }}>
+                        <TypeBadge type={dep.type} />
                       </span>
-                    </td>
-                    <td style={{ ...tdStyle, color: 'var(--text-secondary)' }}>
-                      {dep.repo_full_name}
-                    </td>
-                    <td style={tdStyle}>
-                      <span style={{
-                        padding: '4px 8px',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        fontFamily: 'monospace',
-                        backgroundColor: 'var(--danger-bg)',
-                        color: 'var(--danger-text)',
-                      }}>
-                        {dep.current_version}
-                      </span>
-                    </td>
-                    <td style={tdStyle}>
-                      <span style={{
-                        padding: '4px 8px',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        fontFamily: 'monospace',
-                        backgroundColor: 'var(--success-bg)',
-                        color: 'var(--success-text)',
-                      }}>
-                        {dep.latest_version}
-                      </span>
-                    </td>
-                  </tr>
+                    </Td>
+                    <Td secondary>{dep.repo_full_name}</Td>
+                    <Td>
+                      <VersionBadge version={dep.current_version} isOutdated={dep.is_outdated} />
+                    </Td>
+                    <Td>
+                      <VersionBadge version={dep.latest_version} />
+                    </Td>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+            {displayDeps.length > 20 && (
+              <div style={{
+                padding: '12px 20px',
+                textAlign: 'center',
+                color: 'var(--text-muted)',
+                fontSize: '13px',
+                borderTop: '1px solid var(--border-color)',
+              }}>
+                Showing 20 of {displayDeps.length} • <Link to={cardFilter === 'all' ? '/dependencies' : `/dependencies?filter=${cardFilter}`} style={{ color: 'var(--accent)' }}>View all</Link>
+              </div>
+            )}
+          </>
         )}
-      </div>
+      </Card>
     </div>
-  );
-}
-
-const thStyle: React.CSSProperties = {
-  padding: '12px 20px',
-  textAlign: 'left',
-  fontSize: '12px',
-  fontWeight: 600,
-  color: 'var(--text-muted)',
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px',
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: '14px 20px',
-  fontSize: '14px',
-  color: 'var(--text-primary)',
-};
-
-function StatCard({ label, value, subtitle, color }: {
-  label: string;
-  value: number;
-  subtitle?: string;
-  color: 'accent' | 'success' | 'warning' | 'danger';
-}) {
-  const colors = {
-    accent: { bg: 'var(--bg-hover)', text: 'var(--accent)' },
-    success: { bg: 'var(--success-bg)', text: 'var(--success-text)' },
-    warning: { bg: 'var(--warning-bg)', text: 'var(--warning-text)' },
-    danger: { bg: 'var(--danger-bg)', text: 'var(--danger-text)' },
-  };
-
-  return (
-    <div style={{
-      padding: '20px',
-      borderRadius: '12px',
-      backgroundColor: colors[color].bg,
-    }}>
-      <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-        {label}
-      </div>
-      <div style={{ fontSize: '32px', fontWeight: 700, color: colors[color].text }}>
-        {value.toLocaleString()}
-      </div>
-      {subtitle && (
-        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-          {subtitle}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Spinner() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite' }}>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.25" />
-      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" />
-    </svg>
   );
 }
