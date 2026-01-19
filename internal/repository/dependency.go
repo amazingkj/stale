@@ -62,7 +62,7 @@ func (r *DependencyRepository) GetAll(ctx context.Context) ([]domain.DependencyW
 	return deps, nil
 }
 
-func (r *DependencyRepository) GetPaginated(ctx context.Context, page, limit int, upgradableOnly bool, repoFilter string) (*domain.PaginatedDependencies, error) {
+func (r *DependencyRepository) GetPaginated(ctx context.Context, page, limit int, upgradableOnly bool, repoFilter, ecosystemFilter, search string) (*domain.PaginatedDependencies, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -80,6 +80,15 @@ func (r *DependencyRepository) GetPaginated(ctx context.Context, page, limit int
 	if repoFilter != "" {
 		where += " AND r.full_name = ?"
 		args = append(args, repoFilter)
+	}
+	if ecosystemFilter != "" {
+		where += " AND d.ecosystem = ?"
+		args = append(args, ecosystemFilter)
+	}
+	if search != "" {
+		where += " AND (d.name LIKE ? OR r.full_name LIKE ?)"
+		searchPattern := "%" + search + "%"
+		args = append(args, searchPattern, searchPattern)
 	}
 
 	// Get total count

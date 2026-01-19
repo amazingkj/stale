@@ -1,7 +1,7 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
-import { getPackageUrl } from '../utils';
+import { getPackageUrl, getVersionDiff } from '../utils';
 import { selectStyle } from '../constants/styles';
 import {
   Button,
@@ -14,6 +14,8 @@ import {
   Td,
   TypeBadge,
   VersionBadge,
+  VersionDiffBadge,
+  EcosystemBadge,
   EmptyState,
   LoadingSpinner,
   ErrorMessage,
@@ -21,6 +23,7 @@ import {
 import type { PaginatedDependencies } from '../types';
 
 type StatusFilter = 'all' | 'upgradable' | 'uptodate' | 'prod' | 'dev';
+type EcosystemFilter = '' | 'npm' | 'maven' | 'gradle' | 'go';
 
 const filterLabels: Record<StatusFilter, string> = {
   all: 'All Status',
@@ -30,6 +33,14 @@ const filterLabels: Record<StatusFilter, string> = {
   dev: 'Development Only',
 };
 
+const ecosystemLabels: Record<EcosystemFilter, string> = {
+  '': 'All Ecosystems',
+  npm: 'npm',
+  maven: 'Maven',
+  gradle: 'Gradle',
+  go: 'Go',
+};
+
 const PAGE_SIZE = 50;
 
 export function Dependencies() {
@@ -37,9 +48,12 @@ export function Dependencies() {
   const [paginatedData, setPaginatedData] = useState<PaginatedDependencies | null>(null);
   const [allRepos, setAllRepos] = useState<string[]>([]);
   const [selectedRepo, setSelectedRepo] = useState<string>('all');
+  const [selectedEcosystem, setSelectedEcosystem] = useState<EcosystemFilter>('');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Read filter and page from URL params
   const statusFilter = (searchParams.get('filter') as StatusFilter) || 'all';
@@ -60,14 +74,17 @@ export function Dependencies() {
     try {
       const upgradableOnly = statusFilter === 'upgradable';
       const repoFilter = selectedRepo !== 'all' ? selectedRepo : undefined;
-      const data = await api.getDependenciesPaginated(currentPage, PAGE_SIZE, upgradableOnly, repoFilter);
+      const ecosystemFilter = selectedEcosystem || undefined;
+      const data = await api.getDependenciesPaginated(
+        currentPage, PAGE_SIZE, upgradableOnly, repoFilter, ecosystemFilter, debouncedSearch || undefined
+      );
       setPaginatedData(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dependencies');
     } finally {
       setLoading(false);
     }
-  }, [currentPage, statusFilter, selectedRepo]);
+  }, [currentPage, statusFilter, selectedRepo, selectedEcosystem, debouncedSearch]);
 
   useEffect(() => {
     loadRepositories();
@@ -77,31 +94,39 @@ export function Dependencies() {
     loadDependencies();
   }, [loadDependencies]);
 
-  // Client-side filtering for search and uptodate/prod/dev filters
-  const filteredDeps = useMemo(() => {
-    if (!paginatedData?.data) return [];
-    return paginatedData.data.filter((dep) => {
-      // Additional status filters (server handles 'upgradable' and 'all')
-      switch (statusFilter) {
-        case 'uptodate':
-          if (dep.is_outdated) return false;
-          break;
-        case 'prod':
-          if (dep.type !== 'dependency') return false;
-          break;
-        case 'dev':
-          if (dep.type !== 'devDependency') return false;
-          break;
+  // Debounce search input
+  useEffect(() => {
+    if (searchTimeout.current) {
+      clearTimeout(searchTimeout.current);
+    }
+    searchTimeout.current = setTimeout(() => {
+      setDebouncedSearch(search);
+      // Reset to page 1 when search changes
+      if (search !== debouncedSearch) {
+        searchParams.delete('page');
+        setSearchParams(searchParams);
       }
-      // Search filter
-      if (search) {
-        const searchLower = search.toLowerCase();
-        return dep.name.toLowerCase().includes(searchLower) ||
-          dep.repo_full_name?.toLowerCase().includes(searchLower);
+    }, 300);
+    return () => {
+      if (searchTimeout.current) {
+        clearTimeout(searchTimeout.current);
       }
-      return true;
-    });
-  }, [paginatedData, statusFilter, search]);
+    };
+  }, [search]);
+
+  // Filter client-side for uptodate/prod/dev (server handles upgradable)
+  const filteredDeps = paginatedData?.data?.filter((dep) => {
+    switch (statusFilter) {
+      case 'uptodate':
+        return !dep.is_outdated;
+      case 'prod':
+        return dep.type === 'dependency';
+      case 'dev':
+        return dep.type === 'devDependency';
+      default:
+        return true;
+    }
+  }) || [];
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
@@ -109,7 +134,12 @@ export function Dependencies() {
 
   const handleRepoChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedRepo(e.target.value);
-    // Reset to page 1 when changing repo filter
+    searchParams.delete('page');
+    setSearchParams(searchParams);
+  }, [searchParams, setSearchParams]);
+
+  const handleEcosystemChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedEcosystem(e.target.value as EcosystemFilter);
     searchParams.delete('page');
     setSearchParams(searchParams);
   }, [searchParams, setSearchParams]);
@@ -121,10 +151,18 @@ export function Dependencies() {
     } else {
       searchParams.set('filter', value);
     }
-    // Reset to page 1 when changing status filter
     searchParams.delete('page');
     setSearchParams(searchParams);
   }, [searchParams, setSearchParams]);
+
+  const handleIgnore = useCallback(async (name: string, ecosystem: string) => {
+    try {
+      await api.addIgnored({ name, ecosystem });
+      loadDependencies();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to ignore dependency');
+    }
+  }, [loadDependencies]);
 
   const handlePageChange = useCallback((page: number) => {
     if (page === 1) {
@@ -184,6 +222,16 @@ export function Dependencies() {
           ))}
         </select>
         <select
+          value={selectedEcosystem}
+          onChange={handleEcosystemChange}
+          aria-label="Filter by ecosystem"
+          style={selectStyle}
+        >
+          {Object.entries(ecosystemLabels).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+        <select
           value={statusFilter}
           onChange={handleStatusChange}
           aria-label="Filter by status"
@@ -214,37 +262,59 @@ export function Dependencies() {
           <Card>
             <Table fixed>
               <TableHead>
-                <Th width="30%">Package</Th>
-                <Th width="28%">Repository</Th>
-                <Th width="12%">Type</Th>
-                <Th width="15%">Current</Th>
-                <Th width="15%">Latest</Th>
+                <Th width="22%">Package</Th>
+                <Th width="20%">Repository</Th>
+                <Th width="8%">Ecosystem</Th>
+                <Th width="8%">Type</Th>
+                <Th width="12%">Current</Th>
+                <Th width="18%">Latest</Th>
+                <Th width="12%">Actions</Th>
               </TableHead>
               <TableBody>
-                {filteredDeps.map((dep) => (
-                  <TableRow key={dep.id}>
-                    <Td>
-                      <a
-                        href={getPackageUrl(dep.name, dep.ecosystem)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}
-                      >
-                        {dep.name}
-                      </a>
-                    </Td>
-                    <Td secondary>{dep.repo_full_name}</Td>
-                    <Td>
-                      <TypeBadge type={dep.type} />
-                    </Td>
-                    <Td>
-                      <VersionBadge version={dep.current_version} isOutdated={dep.is_outdated} />
-                    </Td>
-                    <Td>
-                      <VersionBadge version={dep.latest_version} />
-                    </Td>
-                  </TableRow>
-                ))}
+                {filteredDeps.map((dep) => {
+                  const diffType = dep.is_outdated ? getVersionDiff(dep.current_version, dep.latest_version) : 'unknown';
+                  return (
+                    <TableRow key={dep.id}>
+                      <Td>
+                        <a
+                          href={getPackageUrl(dep.name, dep.ecosystem)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}
+                        >
+                          {dep.name}
+                        </a>
+                      </Td>
+                      <Td secondary>{dep.repo_full_name}</Td>
+                      <Td>
+                        <EcosystemBadge ecosystem={dep.ecosystem} />
+                      </Td>
+                      <Td>
+                        <TypeBadge type={dep.type} />
+                      </Td>
+                      <Td>
+                        <VersionBadge version={dep.current_version} isOutdated={dep.is_outdated} />
+                      </Td>
+                      <Td>
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                          <VersionBadge version={dep.latest_version} />
+                          {dep.is_outdated && <VersionDiffBadge diffType={diffType} />}
+                        </div>
+                      </Td>
+                      <Td>
+                        {dep.is_outdated && (
+                          <Button
+                            variant="secondary"
+                            onClick={() => handleIgnore(dep.name, dep.ecosystem)}
+                            style={{ padding: '4px 8px', fontSize: '12px' }}
+                          >
+                            Ignore
+                          </Button>
+                        )}
+                      </Td>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </Card>

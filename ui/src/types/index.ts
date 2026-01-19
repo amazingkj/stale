@@ -112,3 +112,17 @@ export interface NextScan {
   next_run?: string;
   cron_expr: string;
 }
+
+export interface IgnoredDependency {
+  id: number;
+  name: string;
+  ecosystem?: string;
+  reason?: string;
+  created_at: string;
+}
+
+export interface IgnoredDependencyInput {
+  name: string;
+  ecosystem?: string;
+  reason?: string;
+}

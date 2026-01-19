@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import type { Source, SourceInput, Settings } from '../../types';
+import type { Source, SourceInput, Settings, IgnoredDependency } from '../../types';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type SettingsTab = 'sources' | 'schedule' | 'email';
+type SettingsTab = 'sources' | 'schedule' | 'email' | 'ignored';
 
 export function SettingsPanel({ isOpen, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('sources');
@@ -17,20 +17,49 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [ignoredDeps, setIgnoredDeps] = useState<IgnoredDependency[]>([]);
+  const [ignoredLoading, setIgnoredLoading] = useState(true);
 
   useEffect(() => {
     if (isOpen) {
       loadSources();
       loadSettings();
+      loadIgnored();
     }
   }, [isOpen]);
 
+  async function loadIgnored() {
+    setIgnoredLoading(true);
+    try {
+      const data = await api.getIgnored();
+      setIgnoredDeps(data);
+    } catch (err) {
+      console.error('Failed to load ignored:', err);
+    } finally {
+      setIgnoredLoading(false);
+    }
+  }
+
+  async function handleRemoveIgnored(id: number) {
+    try {
+      await api.removeIgnored(id);
+      setIgnoredDeps(ignoredDeps.filter((d) => d.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove from ignored');
+    }
+  }
+
   async function loadSettings() {
+    setSettingsLoading(true);
     try {
       const data = await api.getSettings();
       setSettings(data);
     } catch (err) {
       console.error('Failed to load settings:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load settings');
+    } finally {
+      setSettingsLoading(false);
     }
   }
 
@@ -157,7 +186,7 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
 
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)' }}>
-          {(['sources', 'schedule', 'email'] as const).map((tab) => (
+          {(['sources', 'schedule', 'email', 'ignored'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -174,7 +203,7 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
                 marginBottom: '-1px',
               }}
             >
-              {tab === 'sources' ? 'Sources' : tab === 'schedule' ? 'Schedule' : 'Email'}
+              {tab === 'sources' ? 'Sources' : tab === 'schedule' ? 'Schedule' : tab === 'email' ? 'Email' : 'Ignored'}
             </button>
           ))}
         </div>
@@ -205,12 +234,40 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
             />
           )}
 
-          {activeTab === 'schedule' && settings && (
-            <ScheduleTab settings={settings} onUpdate={handleSettingsUpdate} />
+          {activeTab === 'schedule' && (
+            settingsLoading ? (
+              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                Loading...
+              </div>
+            ) : settings ? (
+              <ScheduleTab settings={settings} onUpdate={handleSettingsUpdate} />
+            ) : (
+              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                Failed to load settings
+              </div>
+            )
           )}
 
-          {activeTab === 'email' && settings && (
-            <EmailTab settings={settings} onUpdate={handleSettingsUpdate} onTestEmail={handleTestEmail} />
+          {activeTab === 'email' && (
+            settingsLoading ? (
+              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                Loading...
+              </div>
+            ) : settings ? (
+              <EmailTab settings={settings} onUpdate={handleSettingsUpdate} onTestEmail={handleTestEmail} />
+            ) : (
+              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                Failed to load settings
+              </div>
+            )
+          )}
+
+          {activeTab === 'ignored' && (
+            <IgnoredTab
+              ignoredDeps={ignoredDeps}
+              loading={ignoredLoading}
+              onRemove={handleRemoveIgnored}
+            />
           )}
         </div>
       </div>
@@ -941,6 +998,87 @@ function EmailTab({ settings, onUpdate, onTestEmail }: {
           {testing ? 'Sending...' : 'Send Test'}
         </button>
       </div>
+    </div>
+  );
+}
+
+function IgnoredTab({ ignoredDeps, loading, onRemove }: {
+  ignoredDeps: IgnoredDependency[];
+  loading: boolean;
+  onRemove: (id: number) => void;
+}) {
+  return (
+    <div>
+      <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 16px' }}>
+        Ignored Dependencies
+      </h3>
+
+      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+        Ignored dependencies will still be tracked but won't appear as "upgradable" in notifications.
+      </p>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+          Loading...
+        </div>
+      ) : ignoredDeps.length === 0 ? (
+        <div style={{
+          padding: '32px 16px',
+          textAlign: 'center',
+          backgroundColor: 'var(--bg-primary)',
+          borderRadius: '8px',
+          border: '1px solid var(--border-color)',
+        }}>
+          <div style={{ fontSize: '32px', marginBottom: '12px' }}>📋</div>
+          <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: 0 }}>
+            No ignored dependencies
+          </p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '12px', margin: '8px 0 0' }}>
+            Use the "Ignore" button on dependencies to add them here
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {ignoredDeps.map((dep) => (
+            <div
+              key={dep.id}
+              style={{
+                padding: '12px 16px',
+                borderRadius: '8px',
+                backgroundColor: 'var(--bg-primary)',
+                border: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                  {dep.name}
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {dep.ecosystem || 'All ecosystems'} · Added {new Date(dep.created_at).toLocaleDateString()}
+                </div>
+              </div>
+              <button
+                onClick={() => onRemove(dep.id)}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: 'var(--danger-bg)',
+                  color: 'var(--danger-text)',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

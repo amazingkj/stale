@@ -1,6 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { badgeColors, type BadgeColor } from '../../constants/styles';
 
+export type VersionDiffType = 'major' | 'minor' | 'patch' | 'unknown';
+
 interface Props {
   children: ReactNode;
   color?: BadgeColor;
@@ -76,6 +78,32 @@ export function VersionBadge({ version, isOutdated }: { version: string; isOutda
       }}
     >
       {version || '-'}
+    </Badge>
+  );
+}
+
+export function VersionDiffBadge({ diffType }: { diffType: VersionDiffType }) {
+  if (diffType === 'unknown') return null;
+
+  const config: Record<Exclude<VersionDiffType, 'unknown'>, { color: BadgeColor; label: string }> = {
+    major: { color: 'danger', label: 'Major' },
+    minor: { color: 'warning', label: 'Minor' },
+    patch: { color: 'success', label: 'Patch' },
+  };
+
+  const { color, label } = config[diffType];
+
+  return (
+    <Badge
+      color={color}
+      style={{
+        fontSize: '10px',
+        fontWeight: 600,
+        padding: '2px 6px',
+        marginLeft: '6px',
+      }}
+    >
+      {label}
     </Badge>
   );
 }

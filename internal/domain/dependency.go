@@ -3,15 +3,16 @@ package domain
 import "time"
 
 type Dependency struct {
-	ID             int64     `db:"id" json:"id"`
-	RepositoryID   int64     `db:"repository_id" json:"repository_id"`
-	Name           string    `db:"name" json:"name"`
-	CurrentVersion string    `db:"current_version" json:"current_version"`
-	LatestVersion  string    `db:"latest_version" json:"latest_version"`
-	Type           string    `db:"type" json:"type"`
-	Ecosystem      string    `db:"ecosystem" json:"ecosystem"` // npm, maven, gradle
-	IsOutdated     bool      `db:"is_outdated" json:"is_outdated"`
-	UpdatedAt      time.Time `db:"updated_at" json:"updated_at"`
+	ID                 int64     `db:"id" json:"id"`
+	RepositoryID       int64     `db:"repository_id" json:"repository_id"`
+	Name               string    `db:"name" json:"name"`
+	CurrentVersion     string    `db:"current_version" json:"current_version"`
+	LatestVersion      string    `db:"latest_version" json:"latest_version"`
+	Type               string    `db:"type" json:"type"`
+	Ecosystem          string    `db:"ecosystem" json:"ecosystem"` // npm, maven, gradle
+	IsOutdated         bool      `db:"is_outdated" json:"is_outdated"`
+	PreviouslyOutdated bool      `db:"previously_outdated" json:"-"`
+	UpdatedAt          time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type DependencyWithRepo struct {

@@ -44,6 +44,7 @@ func NewRouter(
 	depRepo := repository.NewDependencyRepository(db)
 	scanRepo := repository.NewScanRepository(db)
 	settingsRepo := repository.NewSettingsRepository(db)
+	ignoredRepo := repository.NewIgnoredRepository(db)
 
 	// Handlers
 	healthHandler := handler.NewHealthHandler()
@@ -52,6 +53,7 @@ func NewRouter(
 	depHandler := handler.NewDependencyHandler(depRepo)
 	scanHandler := handler.NewScanHandler(scanRepo, scheduler)
 	settingsHandler := handler.NewSettingsHandler(settingsRepo, scheduler, emailService)
+	ignoredHandler := handler.NewIgnoredHandler(ignoredRepo)
 
 	// API routes
 	r.Route("/api/v1", func(r chi.Router) {
@@ -97,6 +99,12 @@ func NewRouter(
 			r.Put("/", settingsHandler.Update)
 			r.Post("/test-email", settingsHandler.TestEmail)
 			r.Get("/next-scan", settingsHandler.GetNextScan)
+		})
+
+		r.Route("/ignored", func(r chi.Router) {
+			r.Get("/", ignoredHandler.List)
+			r.Post("/", ignoredHandler.Create)
+			r.Delete("/{id}", ignoredHandler.Delete)
 		})
 	})
 

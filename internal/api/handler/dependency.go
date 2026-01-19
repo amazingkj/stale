@@ -60,6 +60,8 @@ func (h *DependencyHandler) ListPaginated(w http.ResponseWriter, r *http.Request
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	upgradableOnly := r.URL.Query().Get("upgradable") == "true"
 	repoFilter := r.URL.Query().Get("repo")
+	ecosystemFilter := r.URL.Query().Get("ecosystem")
+	search := r.URL.Query().Get("search")
 
 	if page < 1 {
 		page = 1
@@ -68,7 +70,7 @@ func (h *DependencyHandler) ListPaginated(w http.ResponseWriter, r *http.Request
 		limit = 50
 	}
 
-	result, err := h.repo.GetPaginated(r.Context(), page, limit, upgradableOnly, repoFilter)
+	result, err := h.repo.GetPaginated(r.Context(), page, limit, upgradableOnly, repoFilter, ecosystemFilter, search)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

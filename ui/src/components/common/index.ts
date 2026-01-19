@@ -3,7 +3,7 @@ export { Card, CardHeader, CardBody } from './Card';
 export { Input } from './Input';
 export { Select } from './Select';
 export { Modal } from './Modal';
-export { Badge, EcosystemBadge, TypeBadge, VersionBadge } from './Badge';
+export { Badge, EcosystemBadge, TypeBadge, VersionBadge, VersionDiffBadge, type VersionDiffType } from './Badge';
 export { Table, TableHead, TableBody, TableRow, Th, Td } from './Table';
 export { EmptyState } from './EmptyState';
 export { LoadingSpinner } from './LoadingSpinner';

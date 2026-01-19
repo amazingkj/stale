@@ -1,4 +1,4 @@
-import type { Source, SourceInput, Repository, Dependency, ScanJob, DependencyStats, PaginatedDependencies, Settings, SettingsInput, NextScan } from '../types';
+import type { Source, SourceInput, Repository, Dependency, ScanJob, DependencyStats, PaginatedDependencies, Settings, SettingsInput, NextScan, IgnoredDependency, IgnoredDependencyInput } from '../types';
 
 const API_BASE = '/api/v1';
 
@@ -59,12 +59,14 @@ export const api = {
     return request<Dependency[]>(`/dependencies${params}`);
   },
   getRepositoryNames: () => request<string[]>('/dependencies/repos'),
-  getDependenciesPaginated: (page: number = 1, limit: number = 50, upgradableOnly?: boolean, repo?: string) => {
+  getDependenciesPaginated: (page: number = 1, limit: number = 50, upgradableOnly?: boolean, repo?: string, ecosystem?: string, search?: string) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
     if (upgradableOnly) params.set('upgradable', 'true');
     if (repo) params.set('repo', repo);
+    if (ecosystem) params.set('ecosystem', ecosystem);
+    if (search) params.set('search', search);
     return request<PaginatedDependencies>(`/dependencies/paginated?${params.toString()}`);
   },
   getUpgradableDependencies: () => request<Dependency[]>('/dependencies/upgradable'),
@@ -96,4 +98,11 @@ export const api = {
     request<Settings>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
   testEmail: () => request<{ status: string; message: string }>('/settings/test-email', { method: 'POST' }),
   getNextScan: () => request<NextScan>('/settings/next-scan'),
+
+  // Ignored Dependencies
+  getIgnored: () => request<IgnoredDependency[]>('/ignored'),
+  addIgnored: (data: IgnoredDependencyInput) =>
+    request<IgnoredDependency>('/ignored', { method: 'POST', body: JSON.stringify(data) }),
+  removeIgnored: (id: number) =>
+    request<void>(`/ignored/${id}`, { method: 'DELETE' }),
 };
