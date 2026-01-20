@@ -48,9 +48,7 @@ export function Dependencies() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [paginatedData, setPaginatedData] = useState<PaginatedDependencies | null>(null);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ repos: [], packages: [], ecosystems: [] });
-  const [selectedRepo, setSelectedRepo] = useState<string>(searchParams.get('repo') || 'all');
   const [selectedPackage, setSelectedPackage] = useState<string>('all');
-  const [selectedEcosystem, setSelectedEcosystem] = useState<EcosystemFilter>('');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -63,9 +61,11 @@ export function Dependencies() {
   const [bulkRestoreLoading, setBulkRestoreLoading] = useState(false);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Read filter and page from URL params
+  // Read all filters from URL params (single source of truth)
   const statusFilter = (searchParams.get('filter') as StatusFilter) || 'all';
   const currentPage = parseInt(searchParams.get('page') || '1', 10);
+  const selectedRepo = searchParams.get('repo') || 'all';
+  const selectedEcosystem = (searchParams.get('ecosystem') as EcosystemFilter) || '';
 
   // Load filter options based on current selections (cascading filters)
   const loadFilterOptions = useCallback(async () => {
@@ -134,8 +134,11 @@ export function Dependencies() {
       setDebouncedSearch(search);
       // Reset to page 1 when search changes
       if (search !== debouncedSearch) {
-        searchParams.delete('page');
-        setSearchParams(searchParams);
+        setSearchParams(prev => {
+          const newParams = new URLSearchParams(prev.toString());
+          newParams.delete('page');
+          return newParams;
+        });
       }
     }, 300);
     return () => {
@@ -143,7 +146,7 @@ export function Dependencies() {
         clearTimeout(searchTimeout.current);
       }
     };
-  }, [search]);
+  }, [search, debouncedSearch, setSearchParams]);
 
   // Dependencies are filtered server-side, with optional client-side package filter
   const filteredDeps = useMemo(() => {
@@ -165,43 +168,69 @@ export function Dependencies() {
 
   const handleRepoChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    setSelectedRepo(value);
-    setSelectedPackage('all'); // Reset package when repo changes
-    if (value === 'all') {
-      searchParams.delete('repo');
-    } else {
-      searchParams.set('repo', value);
-    }
-    searchParams.delete('page');
-    setSearchParams(searchParams);
+    // Guard: only update if value actually changed
+    const currentRepo = searchParams.get('repo') || 'all';
+    if (value === currentRepo) return;
+
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev.toString());
+      if (value === 'all') {
+        newParams.delete('repo');
+      } else {
+        newParams.set('repo', value);
+      }
+      newParams.delete('page');
+      return newParams;
+    });
   }, [searchParams, setSearchParams]);
 
   const handleEcosystemChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedEcosystem(e.target.value as EcosystemFilter);
-    setSelectedPackage('all'); // Reset package when ecosystem changes
-    searchParams.delete('page');
-    setSearchParams(searchParams);
+    const value = e.target.value;
+    // Guard: only update if value actually changed
+    const currentEcosystem = searchParams.get('ecosystem') || '';
+    if (value === currentEcosystem) return;
+
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev.toString());
+      if (value === '') {
+        newParams.delete('ecosystem');
+      } else {
+        newParams.set('ecosystem', value);
+      }
+      newParams.delete('page');
+      return newParams;
+    });
   }, [searchParams, setSearchParams]);
 
   const handleStatusChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    if (value === 'all') {
-      searchParams.delete('filter');
-    } else {
-      searchParams.set('filter', value);
-    }
-    searchParams.delete('page');
-    setSearchParams(searchParams);
+    // Guard: only update if value actually changed
+    const currentStatus = searchParams.get('filter') || 'all';
+    if (value === currentStatus) return;
+
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev.toString());
+      if (value === 'all') {
+        newParams.delete('filter');
+      } else {
+        newParams.set('filter', value);
+      }
+      newParams.delete('page');
+      return newParams;
+    });
   }, [searchParams, setSearchParams]);
 
   const handlePageChange = useCallback((page: number) => {
-    if (page === 1) {
-      searchParams.delete('page');
-    } else {
-      searchParams.set('page', String(page));
-    }
-    setSearchParams(searchParams);
-  }, [searchParams, setSearchParams]);
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev.toString());
+      if (page === 1) {
+        newParams.delete('page');
+      } else {
+        newParams.set('page', String(page));
+      }
+      return newParams;
+    });
+  }, [setSearchParams]);
 
   const handleExport = useCallback(() => {
     const params = new URLSearchParams();
@@ -342,6 +371,7 @@ export function Dependencies() {
           style={{
             ...selectStyle,
             width: '200px',
+            cursor: 'text',
           }}
         />
         <select
@@ -509,8 +539,8 @@ export function Dependencies() {
         </Card>
       ) : (
         <>
-          <Card>
-            <Table fixed>
+          <Card minHeight={400}>
+            <Table fixed minHeight={300}>
               <TableHead>
                 <Th width="4%" noEllipsis>
                   <input

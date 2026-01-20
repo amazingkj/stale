@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
-import { selectStyle, inputStyle } from '../constants/styles';
+import { selectStyle } from '../constants/styles';
 import {
   Button,
   Card,
@@ -67,10 +67,8 @@ export function Repositories() {
 
   const handleSourceChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedSource(e.target.value ? Number(e.target.value) : undefined);
-    setSelectedIds(new Set());
-    setSearch('');
-    setEcosystemFilter('');
-    setOutdatedFilter('');
+    setSelectedIds(new Set()); // Clear selection since repos change
+    // Keep other filters - they still apply to new source
   }, []);
 
   const handleSelectOne = useCallback((id: number, checked: boolean) => {
@@ -177,8 +175,9 @@ export function Repositories() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '14px', color: 'var(--text-secondary)', marginRight: 'auto' }}>
+      {/* Summary row - fixed height to prevent layout shifts */}
+      <div style={{ minHeight: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
           {filteredRepositories.length === repositories.length
             ? `${repositories.length} repositories`
             : `${filteredRepositories.length} of ${repositories.length} repositories`}
@@ -194,13 +193,17 @@ export function Repositories() {
             Remove {selectedIds.size} Selected
           </Button>
         )}
+      </div>
+
+      {/* Filter controls */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         {/* Search input */}
         <input
           type="text"
           placeholder="Search repositories..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ ...inputStyle, width: '180px' }}
+          style={{ ...selectStyle, width: '180px', cursor: 'text' }}
         />
         {/* Ecosystem filter */}
         <select
@@ -221,7 +224,7 @@ export function Repositories() {
           style={selectStyle}
         >
           <option value="">All Status</option>
-          <option value="outdated">Has Outdated</option>
+          <option value="outdated">Upgradable</option>
           <option value="uptodate">Up to Date</option>
         </select>
         {/* View Mode Toggle */}
@@ -346,7 +349,7 @@ export function Repositories() {
                 </div>
               )}
               {!collapsedGroups.has(source.id) && repos.length > 0 && (
-                <Table fixed>
+                <Table fixed minHeight={300}>
                   <TableHead>
                     <Th width="4%" noEllipsis>
                       <input
@@ -454,8 +457,8 @@ export function Repositories() {
         </div>
       ) : (
         /* List View */
-        <Card>
-          <Table fixed>
+        <Card minHeight={400}>
+          <Table fixed minHeight={300}>
             <TableHead>
               <Th width="4%" noEllipsis>
                 <input

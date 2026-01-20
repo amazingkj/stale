@@ -4,9 +4,10 @@ interface Props {
   children: ReactNode;
   style?: CSSProperties;
   hoverable?: boolean;
+  minHeight?: string | number;
 }
 
-export function Card({ children, style, hoverable }: Props) {
+export function Card({ children, style, hoverable, minHeight }: Props) {
   return (
     <div
       style={{
@@ -16,6 +17,7 @@ export function Card({ children, style, hoverable }: Props) {
         boxShadow: 'var(--shadow-md)',
         overflow: 'hidden',
         transition: hoverable ? 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)' : undefined,
+        minHeight,
         ...style,
       }}
     >

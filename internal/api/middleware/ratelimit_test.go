@@ -98,6 +98,70 @@ func TestRateLimiter_Handler(t *testing.T) {
 	}
 }
 
+func TestRateLimiter_Stop(t *testing.T) {
+	rl := NewRateLimiter(10, time.Second)
+
+	// Stop should not panic
+	rl.Stop()
+}
+
+func TestRateLimiter_RetryAfterHeader(t *testing.T) {
+	rl := NewRateLimiter(1, time.Second)
+
+	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Use up all tokens
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	req = httptest.NewRequest("GET", "/test", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	// Third request should be rate limited
+	req = httptest.NewRequest("GET", "/test", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Errorf("Expected status 429, got %d", w.Code)
+	}
+
+	// Check Retry-After header
+	if retryAfter := w.Header().Get("Retry-After"); retryAfter != "1" {
+		t.Errorf("Expected Retry-After header to be '1', got %q", retryAfter)
+	}
+}
+
+func TestRateLimiter_MaxTokensCap(t *testing.T) {
+	rl := NewRateLimiter(5, time.Second)
+
+	clientIP := "192.168.1.100"
+
+	// Use some tokens
+	for i := 0; i < 5; i++ {
+		rl.Allow(clientIP)
+	}
+
+	// Wait for refill beyond max
+	time.Sleep(500 * time.Millisecond)
+
+	// Check that tokens don't exceed maxTokens
+	rl.mu.Lock()
+	b := rl.tokens[clientIP]
+	// After refill, tokens should be capped at maxTokens (10)
+	if b.tokens > rl.maxTokens {
+		t.Errorf("Tokens %d exceeded max %d", b.tokens, rl.maxTokens)
+	}
+	rl.mu.Unlock()
+}
+
 func TestGetClientIP(t *testing.T) {
 	tests := []struct {
 		name       string

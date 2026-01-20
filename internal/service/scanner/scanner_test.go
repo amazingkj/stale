@@ -22,7 +22,7 @@ func TestCleanVersion(t *testing.T) {
 		{"with or operator", "^1.0.0 || ^2.0.0", "1.0.0"},
 		{"empty string", "", ""},
 		{"whitespace", "  1.2.3  ", "1.2.3"},
-		{"multiple prefixes", "^~1.2.3", "~1.2.3"},
+		{"multiple prefixes", "^~1.2.3", "1.2.3"},
 		{"prerelease", "1.2.3-beta.1", "1.2.3-beta.1"},
 	}
 

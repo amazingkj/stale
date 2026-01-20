@@ -172,3 +172,40 @@ func (c *Client) ValidateToken(ctx context.Context) error {
 	_, _, err := c.client.Users.Get(ctx, "")
 	return err
 }
+
+// ListManifestFiles returns all manifest file paths in the repository
+func (c *Client) ListManifestFiles(ctx context.Context, fullName, branch string) ([]string, error) {
+	parts := strings.SplitN(fullName, "/", 2)
+	owner := parts[0]
+	repo := parts[1]
+
+	// Get the tree recursively
+	tree, _, err := c.client.Git.GetTree(ctx, owner, repo, branch, true)
+	if err != nil {
+		return nil, err
+	}
+
+	manifestNames := map[string]bool{
+		"package.json":     true,
+		"pom.xml":          true,
+		"build.gradle":     true,
+		"build.gradle.kts": true,
+		"go.mod":           true,
+	}
+
+	var manifests []string
+	for _, entry := range tree.Entries {
+		if entry.Type != nil && *entry.Type == "blob" && entry.Path != nil {
+			// Get the filename from the path
+			path := *entry.Path
+			parts := strings.Split(path, "/")
+			filename := parts[len(parts)-1]
+
+			if manifestNames[filename] {
+				manifests = append(manifests, path)
+			}
+		}
+	}
+
+	return manifests, nil
+}

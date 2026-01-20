@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/jiin/stale/internal/domain"
@@ -24,6 +25,7 @@ import (
 type GitProvider interface {
 	ListRepositories(ctx context.Context) ([]RepoInfo, error)
 	GetFileContent(ctx context.Context, repoPath, filePath, ref string) ([]byte, error)
+	ListManifestFiles(ctx context.Context, repoPath, ref string) ([]string, error)
 }
 
 // RepoInfo contains common repository information
@@ -60,6 +62,10 @@ func (a *GitHubAdapter) GetFileContent(ctx context.Context, repoPath, filePath, 
 	return a.client.GetFileContent(ctx, repoPath, filePath, ref)
 }
 
+func (a *GitHubAdapter) ListManifestFiles(ctx context.Context, repoPath, ref string) ([]string, error) {
+	return a.client.ListManifestFiles(ctx, repoPath, ref)
+}
+
 // GitLabAdapter adapts gitlab.Client to GitProvider
 type GitLabAdapter struct {
 	client *gitlab.Client
@@ -84,6 +90,10 @@ func (a *GitLabAdapter) ListRepositories(ctx context.Context) ([]RepoInfo, error
 
 func (a *GitLabAdapter) GetFileContent(ctx context.Context, repoPath, filePath, ref string) ([]byte, error) {
 	return a.client.GetFileContent(ctx, repoPath, filePath, ref)
+}
+
+func (a *GitLabAdapter) ListManifestFiles(ctx context.Context, repoPath, ref string) ([]string, error) {
+	return a.client.ListManifestFiles(ctx, repoPath, ref)
 }
 
 type Scanner struct {
@@ -231,105 +241,127 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source, scanID i
 			HTMLURL:       repo.HTMLURL,
 		}
 
-		var foundManifest bool
 		var repoDeps int32
 
-		// Fetch all manifest files in parallel for better performance
-		type manifestResult struct {
-			name    string
-			content []byte
+		// List all manifest files in the repository (supports multi-module projects)
+		manifestPaths, err := provider.ListManifestFiles(ctx, repo.FullName, scanBranch)
+		if err != nil {
+			log.Warn().Err(err).Str("repo", repo.FullName).Msg("failed to list manifest files, falling back to root scan")
+			// Fallback to root-level scan if tree listing fails
+			manifestPaths = []string{"package.json", "pom.xml", "build.gradle", "build.gradle.kts", "go.mod"}
 		}
 
-		manifestFiles := []string{"package.json", "pom.xml", "build.gradle", "build.gradle.kts", "go.mod"}
-		results := make(chan manifestResult, len(manifestFiles))
-
-		for _, file := range manifestFiles {
-			go func(f string) {
-				content, err := provider.GetFileContent(ctx, repo.FullName, f, scanBranch)
-				if err != nil {
-					results <- manifestResult{f, nil}
-				} else {
-					results <- manifestResult{f, content}
-				}
-			}(file)
-		}
-
-		// Collect results
-		var packageJSON, pomXML, buildGradle, buildGradleKts, goMod []byte
-		for i := 0; i < len(manifestFiles); i++ {
-			result := <-results
-			if result.content != nil {
-				log.Info().Str("repo", repo.FullName).Str("file", result.name).Msg("found manifest")
-				foundManifest = true
-				switch result.name {
-				case "package.json":
-					packageJSON = result.content
-					repoEntity.HasPackageJSON = true
-				case "pom.xml":
-					pomXML = result.content
-					repoEntity.HasPomXML = true
-				case "build.gradle":
-					buildGradle = result.content
-					repoEntity.HasBuildGradle = true
-				case "build.gradle.kts":
-					buildGradleKts = result.content
-					repoEntity.HasBuildGradle = true
-				case "go.mod":
-					goMod = result.content
-					repoEntity.HasGoMod = true
-				}
-			}
-		}
-
-		// Skip if no manifest found
-		if !foundManifest {
+		if len(manifestPaths) == 0 {
 			log.Info().Str("repo", repo.FullName).Msg("no supported manifest file found (package.json, pom.xml, build.gradle, go.mod)")
 			continue
 		}
 
-		// Upsert repository and delete old dependencies
+		log.Info().Str("repo", repo.FullName).Int("count", len(manifestPaths)).Strs("files", manifestPaths).Msg("found manifest files")
+
+		// Fetch all manifest files in parallel
+		type manifestResult struct {
+			path    string
+			content []byte
+		}
+
+		results := make(chan manifestResult, len(manifestPaths))
+		for _, path := range manifestPaths {
+			go func(p string) {
+				content, err := provider.GetFileContent(ctx, repo.FullName, p, scanBranch)
+				if err != nil {
+					log.Debug().Err(err).Str("repo", repo.FullName).Str("path", p).Msg("failed to fetch manifest")
+					results <- manifestResult{p, nil}
+				} else {
+					results <- manifestResult{p, content}
+				}
+			}(path)
+		}
+
+		// Collect results and categorize by manifest type
+		var packageJSONFiles, pomXMLFiles, gradleFiles, goModFiles []manifestResult
+		for i := 0; i < len(manifestPaths); i++ {
+			result := <-results
+			if result.content == nil {
+				continue
+			}
+
+			// Determine manifest type from filename
+			filename := result.path
+			if idx := strings.LastIndex(result.path, "/"); idx != -1 {
+				filename = result.path[idx+1:]
+			}
+
+			switch filename {
+			case "package.json":
+				packageJSONFiles = append(packageJSONFiles, result)
+				repoEntity.HasPackageJSON = true
+			case "pom.xml":
+				pomXMLFiles = append(pomXMLFiles, result)
+				repoEntity.HasPomXML = true
+			case "build.gradle", "build.gradle.kts":
+				gradleFiles = append(gradleFiles, result)
+				repoEntity.HasBuildGradle = true
+			case "go.mod":
+				goModFiles = append(goModFiles, result)
+				repoEntity.HasGoMod = true
+			}
+		}
+
+		// Skip if no manifest found
+		totalManifests := len(packageJSONFiles) + len(pomXMLFiles) + len(gradleFiles) + len(goModFiles)
+		if totalManifests == 0 {
+			log.Info().Str("repo", repo.FullName).Msg("no valid manifest content found")
+			continue
+		}
+
+		// Record scan start time for this repo (used to detect stale dependencies)
+		repoScanStart := time.Now()
+
+		// Upsert repository
 		repoID, err := s.repoRepo.Upsert(ctx, repoEntity)
 		if err != nil {
 			log.Error().Err(err).Str("repo", repo.FullName).Msg("failed to upsert repository")
 			continue
 		}
 
-		// Delete old dependencies before adding new ones
-		if err := s.depRepo.DeleteByRepoID(ctx, repoID); err != nil {
-			log.Error().Err(err).Str("repo", repo.FullName).Msg("failed to delete old dependencies")
-		}
-
-		// Process each manifest type
-		if packageJSON != nil {
+		// Process all manifest files (supports multi-module projects)
+		for _, manifest := range packageJSONFiles {
 			var pkg PackageJSON
-			if err := json.Unmarshal(packageJSON, &pkg); err == nil {
+			if err := json.Unmarshal(manifest.content, &pkg); err == nil {
+				log.Debug().Str("repo", repo.FullName).Str("path", manifest.path).Msg("processing package.json")
 				deps := s.processNpmDependencies(ctx, repoID, pkg.Dependencies, "dependency")
 				deps += s.processNpmDependencies(ctx, repoID, pkg.DevDependencies, "devDependency")
 				atomic.AddInt32(&repoDeps, int32(deps))
 			}
 		}
 
-		if pomXML != nil {
+		for _, manifest := range pomXMLFiles {
 			var pom PomXML
-			if err := xml.Unmarshal(pomXML, &pom); err == nil {
+			if err := xml.Unmarshal(manifest.content, &pom); err == nil {
+				log.Debug().Str("repo", repo.FullName).Str("path", manifest.path).Msg("processing pom.xml")
 				deps := s.processMavenDependencies(ctx, repoID, pom)
 				atomic.AddInt32(&repoDeps, int32(deps))
 			}
 		}
 
-		if buildGradle != nil {
-			deps := s.processGradleDependencies(ctx, repoID, string(buildGradle))
+		for _, manifest := range gradleFiles {
+			log.Debug().Str("repo", repo.FullName).Str("path", manifest.path).Msg("processing build.gradle")
+			deps := s.processGradleDependencies(ctx, repoID, string(manifest.content))
 			atomic.AddInt32(&repoDeps, int32(deps))
 		}
 
-		if buildGradleKts != nil {
-			deps := s.processGradleDependencies(ctx, repoID, string(buildGradleKts))
+		for _, manifest := range goModFiles {
+			log.Debug().Str("repo", repo.FullName).Str("path", manifest.path).Msg("processing go.mod")
+			deps := s.processGoDependencies(ctx, repoID, string(manifest.content))
 			atomic.AddInt32(&repoDeps, int32(deps))
 		}
 
-		if goMod != nil {
-			deps := s.processGoDependencies(ctx, repoID, string(goMod))
-			atomic.AddInt32(&repoDeps, int32(deps))
+		// Delete stale dependencies (those not updated in this scan)
+		// This removes dependencies that were removed from the manifest
+		if deleted, err := s.depRepo.DeleteStaleByRepoID(ctx, repoID, repoScanStart); err != nil {
+			log.Warn().Err(err).Str("repo", repo.FullName).Msg("failed to delete stale dependencies")
+		} else if deleted > 0 {
+			log.Info().Str("repo", repo.FullName).Int64("deleted", deleted).Msg("removed stale dependencies")
 		}
 
 		atomic.AddInt32(totalRepos, 1)

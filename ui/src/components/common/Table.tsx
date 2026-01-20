@@ -5,11 +5,12 @@ interface TableProps {
   children: ReactNode;
   style?: CSSProperties;
   fixed?: boolean;
+  minHeight?: number | string;
 }
 
-export function Table({ children, style, fixed }: TableProps) {
+export function Table({ children, style, fixed, minHeight }: TableProps) {
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div style={{ overflowX: 'auto', minHeight }}>
       <table style={{
         width: '100%',
         borderCollapse: 'separate',

@@ -199,6 +199,18 @@ func (r *DependencyRepository) DeleteByRepoID(ctx context.Context, repoID int64)
 	return err
 }
 
+// DeleteStaleByRepoID deletes dependencies for a repo that weren't updated after the given time
+// This is used to remove dependencies that no longer exist in the manifest
+func (r *DependencyRepository) DeleteStaleByRepoID(ctx context.Context, repoID int64, updatedAfter time.Time) (int64, error) {
+	result, err := r.db.ExecContext(ctx,
+		"DELETE FROM dependencies WHERE repository_id = ? AND updated_at < ?",
+		repoID, updatedAfter)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 func (r *DependencyRepository) Count(ctx context.Context) (int, error) {
 	var count int
 	err := r.db.GetContext(ctx, &count, "SELECT COUNT(*) FROM dependencies")
@@ -304,27 +316,14 @@ type FilterOptions struct {
 }
 
 // GetFilterOptions returns available filter options based on current selections
+// Note: repos and ecosystems are returned without status filter to prevent
+// dropdown options from disappearing when changing status filter.
+// Only packages are filtered by status since they depend on the current view.
 func (r *DependencyRepository) GetFilterOptions(ctx context.Context, repoFilter, ecosystemFilter, statusFilter, packageFilter string) (*FilterOptions, error) {
-	// Build WHERE clause for base filtering
-	baseWhere := "1=1"
-	args := []interface{}{}
-
-	// Status filter applies to all
-	switch statusFilter {
-	case "upgradable":
-		baseWhere += " AND d.is_outdated = TRUE"
-	case "uptodate":
-		baseWhere += " AND d.is_outdated = FALSE"
-	case "prod":
-		baseWhere += " AND d.type = 'dependency'"
-	case "dev":
-		baseWhere += " AND d.type = 'devDependency'"
-	}
-
-	// Get available repositories (filtered by ecosystem and package if selected)
-	repoWhere := baseWhere
-	repoArgs := make([]interface{}, len(args))
-	copy(repoArgs, args)
+	// Get available repositories (filtered by ecosystem and package only, NOT by status)
+	// This ensures repo dropdown doesn't lose options when user changes status filter
+	repoWhere := "1=1"
+	repoArgs := []interface{}{}
 	if ecosystemFilter != "" {
 		repoWhere += " AND d.ecosystem = ?"
 		repoArgs = append(repoArgs, ecosystemFilter)
@@ -342,31 +341,10 @@ func (r *DependencyRepository) GetFilterOptions(ctx context.Context, repoFilter,
 		return nil, err
 	}
 
-	// Get available packages (filtered by repo and ecosystem if selected)
-	pkgWhere := baseWhere
-	pkgArgs := make([]interface{}, len(args))
-	copy(pkgArgs, args)
-	if repoFilter != "" {
-		pkgWhere += " AND r.full_name = ?"
-		pkgArgs = append(pkgArgs, repoFilter)
-	}
-	if ecosystemFilter != "" {
-		pkgWhere += " AND d.ecosystem = ?"
-		pkgArgs = append(pkgArgs, ecosystemFilter)
-	}
-
-	pkgQuery := `SELECT DISTINCT d.name FROM dependencies d
-                 JOIN repositories r ON d.repository_id = r.id
-                 WHERE ` + pkgWhere + ` ORDER BY d.name`
-	var packages []string
-	if err := r.db.SelectContext(ctx, &packages, pkgQuery, pkgArgs...); err != nil {
-		return nil, err
-	}
-
-	// Get available ecosystems (filtered by repo and package if selected)
-	ecoWhere := baseWhere
-	ecoArgs := make([]interface{}, len(args))
-	copy(ecoArgs, args)
+	// Get available ecosystems (filtered by repo and package only, NOT by status)
+	// This ensures ecosystem dropdown doesn't lose options when user changes status filter
+	ecoWhere := "1=1"
+	ecoArgs := []interface{}{}
 	if repoFilter != "" {
 		ecoWhere += " AND r.full_name = ?"
 		ecoArgs = append(ecoArgs, repoFilter)
@@ -381,6 +359,38 @@ func (r *DependencyRepository) GetFilterOptions(ctx context.Context, repoFilter,
                  WHERE ` + ecoWhere + ` ORDER BY d.ecosystem`
 	var ecosystems []string
 	if err := r.db.SelectContext(ctx, &ecosystems, ecoQuery, ecoArgs...); err != nil {
+		return nil, err
+	}
+
+	// Get available packages (filtered by repo, ecosystem, AND status)
+	// Packages should reflect what's available in the current filtered view
+	pkgWhere := "1=1"
+	pkgArgs := []interface{}{}
+	if repoFilter != "" {
+		pkgWhere += " AND r.full_name = ?"
+		pkgArgs = append(pkgArgs, repoFilter)
+	}
+	if ecosystemFilter != "" {
+		pkgWhere += " AND d.ecosystem = ?"
+		pkgArgs = append(pkgArgs, ecosystemFilter)
+	}
+	// Apply status filter only to packages
+	switch statusFilter {
+	case "upgradable":
+		pkgWhere += " AND d.is_outdated = TRUE"
+	case "uptodate":
+		pkgWhere += " AND d.is_outdated = FALSE"
+	case "prod":
+		pkgWhere += " AND d.type = 'dependency'"
+	case "dev":
+		pkgWhere += " AND d.type = 'devDependency'"
+	}
+
+	pkgQuery := `SELECT DISTINCT d.name FROM dependencies d
+                 JOIN repositories r ON d.repository_id = r.id
+                 WHERE ` + pkgWhere + ` ORDER BY d.name`
+	var packages []string
+	if err := r.db.SelectContext(ctx, &packages, pkgQuery, pkgArgs...); err != nil {
 		return nil, err
 	}
 

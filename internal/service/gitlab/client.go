@@ -193,3 +193,77 @@ func (c *Client) GetFileContent(ctx context.Context, projectPath, filePath, ref 
 
 	return []byte(file.Content), nil
 }
+
+// TreeEntry represents a file or directory in the repository tree
+type TreeEntry struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Type string `json:"type"` // "blob" or "tree"
+	Path string `json:"path"`
+}
+
+// ListManifestFiles returns all manifest file paths in the repository
+func (c *Client) ListManifestFiles(ctx context.Context, projectPath, ref string) ([]string, error) {
+	manifestNames := map[string]bool{
+		"package.json":     true,
+		"pom.xml":          true,
+		"build.gradle":     true,
+		"build.gradle.kts": true,
+		"go.mod":           true,
+	}
+
+	var manifests []string
+	page := 1
+	perPage := 100
+
+	for {
+		endpoint := fmt.Sprintf("%s/api/v4/projects/%s/repository/tree?ref=%s&recursive=true&page=%d&per_page=%d",
+			c.baseURL,
+			url.PathEscape(projectPath),
+			url.QueryEscape(ref),
+			page,
+			perPage,
+		)
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("PRIVATE-TOKEN", c.token)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("gitlab API returned status %d", resp.StatusCode)
+		}
+
+		var entries []TreeEntry
+		if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+			resp.Body.Close()
+			return nil, err
+		}
+		resp.Body.Close()
+
+		if len(entries) == 0 {
+			break
+		}
+
+		for _, entry := range entries {
+			if entry.Type == "blob" && manifestNames[entry.Name] {
+				manifests = append(manifests, entry.Path)
+			}
+		}
+
+		page++
+		// Safety limit
+		if page > 100 {
+			break
+		}
+	}
+
+	return manifests, nil
+}

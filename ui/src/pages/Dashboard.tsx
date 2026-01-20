@@ -245,6 +245,7 @@ export function Dashboard() {
           style={{
             ...selectStyle,
             width: '200px',
+            cursor: 'text',
           }}
         />
         <select
@@ -362,7 +363,7 @@ export function Dashboard() {
       </div>
 
       {/* Dependencies Table */}
-      <Card>
+      <Card minHeight={400}>
         <CardHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <h2 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
@@ -403,7 +404,7 @@ export function Dashboard() {
           />
         ) : (
           <>
-            <Table fixed>
+            <Table fixed minHeight={300}>
               <TableHead>
                 <Th width="35%">Package</Th>
                 <Th width="30%">Repository</Th>
