@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/jiin/stale/internal/domain"
 	"github.com/jiin/stale/internal/repository"
@@ -16,16 +17,17 @@ import (
 var ErrScanAlreadyRunning = errors.New("a scan is already running")
 
 type Scheduler struct {
-	scanner      *scanner.Scanner
-	scanRepo     *repository.ScanRepository
-	depRepo      *repository.DependencyRepository
-	settingsRepo *repository.SettingsRepository
-	emailService *email.Service
-	cron         *cron.Cron
-	cronEntryID  cron.EntryID
-	stopCh       chan struct{}
-	mu           sync.Mutex
-	runningJobID *int64
+	scanner          *scanner.Scanner
+	scanRepo         *repository.ScanRepository
+	depRepo          *repository.DependencyRepository
+	settingsRepo     *repository.SettingsRepository
+	emailService     *email.Service
+	cron             *cron.Cron
+	cronEntryID      cron.EntryID
+	stopCh           chan struct{}
+	mu               sync.Mutex
+	runningJobID     *int64
+	onScanComplete   []func() // Callbacks to run after scan completes
 }
 
 func New(
@@ -41,7 +43,7 @@ func New(
 		depRepo:      depRepo,
 		settingsRepo: settingsRepo,
 		emailService: emailService,
-		cron:         cron.New(),
+		cron:         cron.New(cron.WithLocation(time.Local)),
 		stopCh:       make(chan struct{}),
 	}
 }
@@ -60,7 +62,7 @@ func (s *Scheduler) Start() {
 
 	// Start cron scheduler
 	s.cron.Start()
-	log.Info().Msg("cron scheduler started")
+	log.Info().Str("timezone", time.Local.String()).Msg("cron scheduler started")
 
 	<-s.stopCh
 	log.Info().Msg("scheduler stopped")
@@ -109,6 +111,22 @@ func (s *Scheduler) ClearRunningJob(scanID int64) {
 	defer s.mu.Unlock()
 	if s.runningJobID != nil && *s.runningJobID == scanID {
 		s.runningJobID = nil
+	}
+}
+
+// OnScanComplete registers a callback to run after scan completes
+func (s *Scheduler) OnScanComplete(callback func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onScanComplete = append(s.onScanComplete, callback)
+}
+
+func (s *Scheduler) notifyScanComplete() {
+	s.mu.Lock()
+	callbacks := s.onScanComplete
+	s.mu.Unlock()
+	for _, cb := range callbacks {
+		cb()
 	}
 }
 
@@ -166,6 +184,9 @@ func (s *Scheduler) runScheduledScan() {
 	if err := s.scanRepo.UpdateStatus(ctx, scan.ID, status, scanErr); err != nil {
 		log.Error().Err(err).Msg("failed to update scan status")
 	}
+
+	// Notify scan complete callbacks (cache invalidation, etc.)
+	s.notifyScanComplete()
 }
 
 func (s *Scheduler) sendNewOutdatedNotification(ctx context.Context, scanID int64) {
@@ -262,4 +283,7 @@ func (s *Scheduler) runScan(scanID int64, sourceID *int64) {
 	if err := s.scanRepo.UpdateStatus(ctx, scanID, status, scanErr); err != nil {
 		log.Error().Err(err).Msg("failed to update scan status")
 	}
+
+	// Notify scan complete callbacks (cache invalidation, etc.)
+	s.notifyScanComplete()
 }

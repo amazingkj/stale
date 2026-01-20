@@ -5,6 +5,10 @@ export interface Source {
   organization?: string;
   url?: string;  // For self-hosted GitLab
   repositories?: string;  // Comma-separated list of repos to scan
+  scan_branch?: string;  // Branch to scan (empty = use repo's default branch)
+  insecure_skip_verify?: boolean;  // Skip TLS verification for self-hosted instances
+  membership_only?: boolean;  // GitLab: only show projects where user is a member
+  owner_only?: boolean;  // GitHub: only show repos owned by user
   created_at: string;
   updated_at: string;
   last_scan_at?: string;
@@ -17,6 +21,10 @@ export interface SourceInput {
   organization?: string;
   url?: string;  // For self-hosted GitLab
   repositories?: string;  // Comma-separated list of repos to scan
+  scan_branch?: string;  // Branch to scan (empty = use repo's default branch)
+  insecure_skip_verify?: boolean;  // Skip TLS verification for self-hosted instances
+  membership_only?: boolean;  // GitLab: only show projects where user is a member
+  owner_only?: boolean;  // GitHub: only show repos owned by user
 }
 
 export interface Repository {
@@ -33,6 +41,8 @@ export interface Repository {
   created_at: string;
   updated_at: string;
   last_scan_at?: string;
+  dependency_count: number;
+  outdated_count: number;
 }
 
 export interface Dependency {
@@ -79,6 +89,12 @@ export interface PaginatedDependencies {
   page: number;
   limit: number;
   total_pages: number;
+}
+
+export interface FilterOptions {
+  repos: string[];
+  packages: string[];
+  ecosystems: string[];
 }
 
 export interface Settings {

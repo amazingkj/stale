@@ -66,3 +66,67 @@ func (h *IgnoredHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// BulkCreate adds multiple dependencies to the ignore list
+func (h *IgnoredHandler) BulkCreate(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Items []domain.IgnoredDependencyInput `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(input.Items) == 0 {
+		http.Error(w, "items array is required", http.StatusBadRequest)
+		return
+	}
+
+	var created []domain.IgnoredDependency
+	var errors []string
+
+	for _, item := range input.Items {
+		if item.Name == "" {
+			continue
+		}
+		ignored, err := h.repo.Create(r.Context(), &item)
+		if err != nil {
+			// Skip duplicates silently
+			errors = append(errors, item.Name+": "+err.Error())
+			continue
+		}
+		created = append(created, *ignored)
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"created": len(created),
+		"items":   created,
+	})
+}
+
+// BulkDelete removes multiple dependencies from the ignore list
+func (h *IgnoredHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(input.IDs) == 0 {
+		http.Error(w, "ids array is required", http.StatusBadRequest)
+		return
+	}
+
+	var deleted int
+	for _, id := range input.IDs {
+		if err := h.repo.Delete(r.Context(), id); err == nil {
+			deleted++
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"deleted": deleted,
+	})
+}

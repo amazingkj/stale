@@ -9,3 +9,4 @@ export { EmptyState } from './EmptyState';
 export { LoadingSpinner } from './LoadingSpinner';
 export { ErrorMessage } from './ErrorMessage';
 export { StatCard } from './StatCard';
+export { Pagination } from './Pagination';

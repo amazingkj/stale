@@ -28,6 +28,12 @@ func NewDependencyHandler(repo *repository.DependencyRepository) *DependencyHand
 	}
 }
 
+// ClearCache clears all cached data (call after scan completes)
+func (h *DependencyHandler) ClearCache() {
+	h.statsCache.Clear()
+	h.reposCache.Clear()
+}
+
 func (h *DependencyHandler) List(w http.ResponseWriter, r *http.Request) {
 	outdated := r.URL.Query().Get("outdated")
 
@@ -58,10 +64,15 @@ func (h *DependencyHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *DependencyHandler) ListPaginated(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	upgradableOnly := r.URL.Query().Get("upgradable") == "true"
+	statusFilter := r.URL.Query().Get("status") // all, upgradable, uptodate, prod, dev
 	repoFilter := r.URL.Query().Get("repo")
 	ecosystemFilter := r.URL.Query().Get("ecosystem")
 	search := r.URL.Query().Get("search")
+
+	// Support legacy upgradable parameter
+	if r.URL.Query().Get("upgradable") == "true" && statusFilter == "" {
+		statusFilter = "upgradable"
+	}
 
 	if page < 1 {
 		page = 1
@@ -70,7 +81,7 @@ func (h *DependencyHandler) ListPaginated(w http.ResponseWriter, r *http.Request
 		limit = 50
 	}
 
-	result, err := h.repo.GetPaginated(r.Context(), page, limit, upgradableOnly, repoFilter, ecosystemFilter, search)
+	result, err := h.repo.GetPaginated(r.Context(), page, limit, statusFilter, repoFilter, ecosystemFilter, search)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -132,9 +143,47 @@ func (h *DependencyHandler) GetRepositoryNames(w http.ResponseWriter, r *http.Re
 	json.NewEncoder(w).Encode(names)
 }
 
+func (h *DependencyHandler) GetPackageNames(w http.ResponseWriter, r *http.Request) {
+	names, err := h.repo.GetPackageNames(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if names == nil {
+		names = []string{}
+	}
+	json.NewEncoder(w).Encode(names)
+}
+
+func (h *DependencyHandler) GetFilterOptions(w http.ResponseWriter, r *http.Request) {
+	repoFilter := r.URL.Query().Get("repo")
+	ecosystemFilter := r.URL.Query().Get("ecosystem")
+	statusFilter := r.URL.Query().Get("status")
+	packageFilter := r.URL.Query().Get("package")
+
+	options, err := h.repo.GetFilterOptions(r.Context(), repoFilter, ecosystemFilter, statusFilter, packageFilter)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if options.Repos == nil {
+		options.Repos = []string{}
+	}
+	if options.Packages == nil {
+		options.Packages = []string{}
+	}
+	if options.Ecosystems == nil {
+		options.Ecosystems = []string{}
+	}
+	json.NewEncoder(w).Encode(options)
+}
+
 func (h *DependencyHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 	filter := r.URL.Query().Get("filter")
 	repoFilter := r.URL.Query().Get("repo")
+	packageFilter := r.URL.Query().Get("package")
+	ecosystemFilter := r.URL.Query().Get("ecosystem")
+	searchFilter := r.URL.Query().Get("search")
 
 	// Support legacy outdated parameter
 	if r.URL.Query().Get("outdated") == "true" && filter == "" {
@@ -142,9 +191,9 @@ func (h *DependencyHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get filtered dependencies directly from database for better performance
-	deps, err := h.repo.GetFiltered(r.Context(), filter, repoFilter)
+	deps, err := h.repo.GetFilteredWithAll(r.Context(), filter, repoFilter, packageFilter, ecosystemFilter, searchFilter)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 
@@ -189,17 +238,18 @@ func (h *DependencyHandler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 	defer writer.Flush()
 
 	// Write header row
-	header := []string{"Repository", "Source", "Dependency", "Ecosystem", "Type", "Current Version", "Latest Version", "Upgradable"}
+	header := []string{"No.", "Repository", "Source", "Dependency", "Ecosystem", "Type", "Current Version", "Latest Version", "Upgradable"}
 	writer.Write(header)
 
 	// Write data rows
-	for _, dep := range deps {
+	for i, dep := range deps {
 		upgradable := "No"
 		if dep.IsOutdated {
 			upgradable = "Yes"
 		}
 
 		row := []string{
+			strconv.Itoa(i + 1),
 			dep.RepoFullName,
 			dep.SourceName,
 			dep.Name,

@@ -35,6 +35,9 @@ func Migrate(db *sqlx.DB) error {
 		"migrations/006_performance_indexes.sql",
 		"migrations/007_settings.sql",
 		"migrations/008_ignored_dependencies.sql",
+		"migrations/009_add_insecure_skip_verify.sql",
+		"migrations/010_add_membership_only.sql",
+		"migrations/011_add_owner_only.sql",
 	}
 
 	for _, file := range migrationFiles {

@@ -108,3 +108,60 @@ func isTemporaryError(err error) bool {
 	}
 	return false
 }
+
+// RetryTransport wraps an http.RoundTripper with retry logic
+type RetryTransport struct {
+	Base   http.RoundTripper
+	Config RetryConfig
+}
+
+// RoundTrip implements http.RoundTripper with retry logic
+func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	var lastErr error
+	delay := t.Config.BaseDelay
+
+	for attempt := 0; attempt <= t.Config.MaxRetries; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
+			case <-time.After(delay):
+			}
+			delay *= 2
+			if delay > t.Config.MaxDelay {
+				delay = t.Config.MaxDelay
+			}
+		}
+
+		resp, err := t.Base.RoundTrip(req)
+		if err != nil {
+			if t.Config.RetryOnTemp && isTemporaryError(err) {
+				lastErr = err
+				continue
+			}
+			return nil, err
+		}
+
+		// Retry on 5xx or 429 (rate limit)
+		if t.Config.RetryOn5xx && (resp.StatusCode >= 500 || resp.StatusCode == 429) {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("server error: %d", resp.StatusCode)
+			continue
+		}
+
+		return resp, nil
+	}
+
+	if lastErr != nil {
+		return nil, fmt.Errorf("max retries exceeded: %w", lastErr)
+	}
+	return nil, fmt.Errorf("max retries exceeded")
+}
+
+// DefaultTransportWithRetry returns a transport with connection pooling and retry logic
+func DefaultTransportWithRetry() http.RoundTripper {
+	return &RetryTransport{
+		Base:   DefaultTransport(),
+		Config: DefaultRetryConfig(),
+	}
+}

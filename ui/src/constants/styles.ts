@@ -4,9 +4,9 @@ import type { CSSProperties } from 'react';
  * Table header cell styles
  */
 export const tableHeaderStyle: CSSProperties = {
-  padding: '12px 20px',
+  padding: '10px 16px',
   textAlign: 'left',
-  fontSize: '12px',
+  fontSize: '11px',
   fontWeight: 600,
   color: 'var(--text-muted)',
   textTransform: 'uppercase',
@@ -17,8 +17,8 @@ export const tableHeaderStyle: CSSProperties = {
  * Table body cell styles
  */
 export const tableCellStyle: CSSProperties = {
-  padding: '14px 20px',
-  fontSize: '14px',
+  padding: '12px 16px',
+  fontSize: '13px',
   color: 'var(--text-primary)',
 };
 
@@ -27,12 +27,12 @@ export const tableCellStyle: CSSProperties = {
  */
 export const inputStyle: CSSProperties = {
   width: '100%',
-  padding: '10px 12px',
-  borderRadius: '8px',
+  padding: '8px 10px',
+  borderRadius: '6px',
   border: '1px solid var(--border-color)',
   backgroundColor: 'var(--bg-card)',
   color: 'var(--text-primary)',
-  fontSize: '14px',
+  fontSize: '13px',
   outline: 'none',
   boxSizing: 'border-box',
 };
@@ -41,12 +41,12 @@ export const inputStyle: CSSProperties = {
  * Select dropdown styles
  */
 export const selectStyle: CSSProperties = {
-  padding: '10px 12px',
-  borderRadius: '8px',
+  padding: '8px 10px',
+  borderRadius: '6px',
   border: '1px solid var(--border-color)',
   backgroundColor: 'var(--bg-card)',
   color: 'var(--text-primary)',
-  fontSize: '14px',
+  fontSize: '13px',
   outline: 'none',
   cursor: 'pointer',
 };
@@ -55,12 +55,12 @@ export const selectStyle: CSSProperties = {
  * Primary button styles
  */
 export const primaryButtonStyle: CSSProperties = {
-  padding: '10px 20px',
-  borderRadius: '8px',
+  padding: '8px 16px',
+  borderRadius: '6px',
   border: 'none',
   backgroundColor: 'var(--accent)',
   color: 'white',
-  fontSize: '14px',
+  fontSize: '13px',
   fontWeight: 500,
   cursor: 'pointer',
 };
@@ -69,12 +69,12 @@ export const primaryButtonStyle: CSSProperties = {
  * Secondary button styles
  */
 export const secondaryButtonStyle: CSSProperties = {
-  padding: '10px 16px',
-  borderRadius: '8px',
+  padding: '8px 14px',
+  borderRadius: '6px',
   border: '1px solid var(--border-color)',
   backgroundColor: 'var(--bg-card)',
   color: 'var(--text-primary)',
-  fontSize: '14px',
+  fontSize: '13px',
   cursor: 'pointer',
 };
 
@@ -83,7 +83,7 @@ export const secondaryButtonStyle: CSSProperties = {
  */
 export const cardStyle: CSSProperties = {
   backgroundColor: 'var(--bg-card)',
-  borderRadius: '12px',
+  borderRadius: '10px',
   border: '1px solid var(--border-color)',
   overflow: 'hidden',
 };
@@ -92,11 +92,11 @@ export const cardStyle: CSSProperties = {
  * Error message styles
  */
 export const errorStyle: CSSProperties = {
-  padding: '12px 16px',
-  borderRadius: '8px',
+  padding: '10px 14px',
+  borderRadius: '6px',
   backgroundColor: 'var(--danger-bg)',
   color: 'var(--danger-text)',
-  fontSize: '14px',
+  fontSize: '13px',
 };
 
 /**
@@ -122,6 +122,10 @@ export const badgeColors = {
   muted: {
     backgroundColor: 'var(--bg-hover)',
     color: 'var(--text-muted)',
+  },
+  purple: {
+    backgroundColor: 'var(--purple-bg)',
+    color: 'var(--purple-text)',
   },
 } as const;
 

@@ -2,6 +2,7 @@ package gitlab
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -13,10 +14,11 @@ import (
 )
 
 type Client struct {
-	httpClient *http.Client
-	token      string
-	baseURL    string
-	groupPath  string // Optional: for group-level operations
+	httpClient     *http.Client
+	token          string
+	baseURL        string
+	groupPath      string // Optional: for group-level operations
+	membershipOnly bool   // Only list projects where user is a member
 }
 
 type Repository struct {
@@ -32,15 +34,40 @@ type FileContent struct {
 	Encoding string `json:"encoding"`
 }
 
-func New(token, baseURL, groupPath string) *Client {
+func New(token, baseURL, groupPath string, insecureSkipVerify, membershipOnly bool) *Client {
 	if baseURL == "" {
 		baseURL = "https://gitlab.com"
 	}
+
+	// Use custom transport with retry logic
+	var baseTransport http.RoundTripper
+	if insecureSkipVerify {
+		baseTransport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+	} else {
+		baseTransport = httputil.DefaultTransport()
+	}
+
+	// Wrap with retry transport
+	transport := &httputil.RetryTransport{
+		Base:   baseTransport,
+		Config: httputil.DefaultRetryConfig(),
+	}
+
+	httpClient := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: transport,
+	}
+
 	return &Client{
-		httpClient: httputil.NewClient(30 * time.Second),
-		token:      token,
-		baseURL:    baseURL,
-		groupPath:  groupPath,
+		httpClient:     httpClient,
+		token:          token,
+		baseURL:        baseURL,
+		groupPath:      groupPath,
+		membershipOnly: membershipOnly,
 	}
 }
 
@@ -79,8 +106,13 @@ func (c *Client) ListRepositories(ctx context.Context) ([]Repository, error) {
 				c.baseURL, url.PathEscape(c.groupPath), page, perPage)
 		} else {
 			// List projects accessible to the user
-			endpoint = fmt.Sprintf("%s/api/v4/projects?membership=true&page=%d&per_page=%d",
-				c.baseURL, page, perPage)
+			if c.membershipOnly {
+				endpoint = fmt.Sprintf("%s/api/v4/projects?membership=true&page=%d&per_page=%d",
+					c.baseURL, page, perPage)
+			} else {
+				endpoint = fmt.Sprintf("%s/api/v4/projects?page=%d&per_page=%d",
+					c.baseURL, page, perPage)
+			}
 		}
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)

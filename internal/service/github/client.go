@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/go-github/v68/github"
 	"github.com/jiin/stale/internal/service/httputil"
@@ -12,13 +13,14 @@ import (
 )
 
 type Client struct {
-	client *github.Client
-	org    string
+	client    *github.Client
+	org       string
+	ownerOnly bool
 }
 
-func New(token, org string) *Client {
-	// Use custom transport with connection pooling
-	transport := httputil.DefaultTransport()
+func New(token, org string, ownerOnly bool) *Client {
+	// Use custom transport with connection pooling and retry logic
+	transport := httputil.DefaultTransportWithRetry()
 
 	// Wrap with OAuth2 transport
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
@@ -29,11 +31,13 @@ func New(token, org string) *Client {
 
 	httpClient := &http.Client{
 		Transport: oauth2Transport,
+		Timeout:   30 * time.Second,
 	}
 
 	return &Client{
-		client: github.NewClient(httpClient),
-		org:    org,
+		client:    github.NewClient(httpClient),
+		org:       org,
+		ownerOnly: ownerOnly,
 	}
 }
 
@@ -91,9 +95,13 @@ func (c *Client) listOrgRepos(ctx context.Context) ([]Repository, error) {
 
 func (c *Client) listUserRepos(ctx context.Context) ([]Repository, error) {
 	var allRepos []Repository
+	affiliation := "owner,collaborator,organization_member"
+	if c.ownerOnly {
+		affiliation = "owner"
+	}
 	opt := &github.RepositoryListByAuthenticatedUserOptions{
 		ListOptions: github.ListOptions{PerPage: 100},
-		Affiliation: "owner,collaborator,organization_member",
+		Affiliation: affiliation,
 	}
 
 	for {

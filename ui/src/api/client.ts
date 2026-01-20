@@ -1,4 +1,4 @@
-import type { Source, SourceInput, Repository, Dependency, ScanJob, DependencyStats, PaginatedDependencies, Settings, SettingsInput, NextScan, IgnoredDependency, IgnoredDependencyInput } from '../types';
+import type { Source, SourceInput, Repository, Dependency, ScanJob, DependencyStats, PaginatedDependencies, FilterOptions, Settings, SettingsInput, NextScan, IgnoredDependency, IgnoredDependencyInput } from '../types';
 
 const API_BASE = '/api/v1';
 
@@ -59,11 +59,21 @@ export const api = {
     return request<Dependency[]>(`/dependencies${params}`);
   },
   getRepositoryNames: () => request<string[]>('/dependencies/repos'),
-  getDependenciesPaginated: (page: number = 1, limit: number = 50, upgradableOnly?: boolean, repo?: string, ecosystem?: string, search?: string) => {
+  getPackageNames: () => request<string[]>('/dependencies/packages'),
+  getFilterOptions: (repo?: string, ecosystem?: string, status?: string, pkg?: string) => {
+    const params = new URLSearchParams();
+    if (repo) params.set('repo', repo);
+    if (ecosystem) params.set('ecosystem', ecosystem);
+    if (status && status !== 'all') params.set('status', status);
+    if (pkg) params.set('package', pkg);
+    const query = params.toString();
+    return request<FilterOptions>(`/dependencies/filter-options${query ? `?${query}` : ''}`);
+  },
+  getDependenciesPaginated: (page: number = 1, limit: number = 50, status?: string, repo?: string, ecosystem?: string, search?: string) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
-    if (upgradableOnly) params.set('upgradable', 'true');
+    if (status && status !== 'all') params.set('status', status);
     if (repo) params.set('repo', repo);
     if (ecosystem) params.set('ecosystem', ecosystem);
     if (search) params.set('search', search);
@@ -103,6 +113,10 @@ export const api = {
   getIgnored: () => request<IgnoredDependency[]>('/ignored'),
   addIgnored: (data: IgnoredDependencyInput) =>
     request<IgnoredDependency>('/ignored', { method: 'POST', body: JSON.stringify(data) }),
+  bulkAddIgnored: (items: IgnoredDependencyInput[]) =>
+    request<{ created: number; items: IgnoredDependency[] }>('/ignored/bulk', { method: 'POST', body: JSON.stringify({ items }) }),
   removeIgnored: (id: number) =>
     request<void>(`/ignored/${id}`, { method: 'DELETE' }),
+  bulkRemoveIgnored: (ids: number[]) =>
+    request<{ deleted: number }>('/ignored/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
 };

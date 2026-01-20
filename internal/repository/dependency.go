@@ -62,7 +62,7 @@ func (r *DependencyRepository) GetAll(ctx context.Context) ([]domain.DependencyW
 	return deps, nil
 }
 
-func (r *DependencyRepository) GetPaginated(ctx context.Context, page, limit int, upgradableOnly bool, repoFilter, ecosystemFilter, search string) (*domain.PaginatedDependencies, error) {
+func (r *DependencyRepository) GetPaginated(ctx context.Context, page, limit int, statusFilter, repoFilter, ecosystemFilter, search string) (*domain.PaginatedDependencies, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -74,9 +74,19 @@ func (r *DependencyRepository) GetPaginated(ctx context.Context, page, limit int
 	// Build WHERE clause
 	where := "1=1"
 	args := []interface{}{}
-	if upgradableOnly {
+
+	// Status filter
+	switch statusFilter {
+	case "upgradable":
 		where += " AND d.is_outdated = TRUE"
+	case "uptodate":
+		where += " AND d.is_outdated = FALSE"
+	case "prod":
+		where += " AND d.type = 'dependency'"
+	case "dev":
+		where += " AND d.type = 'devDependency'"
 	}
+
 	if repoFilter != "" {
 		where += " AND r.full_name = ?"
 		args = append(args, repoFilter)
@@ -239,12 +249,21 @@ func (r *DependencyRepository) GetFiltered(ctx context.Context, filter, repoFilt
 	return deps, nil
 }
 
-// GetRepositoryNames returns unique repository full names for dropdowns
+// GetRepositoryNames returns all repository full names for dropdowns
 func (r *DependencyRepository) GetRepositoryNames(ctx context.Context) ([]string, error) {
-	query := `SELECT DISTINCT r.full_name
-              FROM repositories r
-              JOIN dependencies d ON d.repository_id = r.id
-              ORDER BY r.full_name`
+	query := `SELECT full_name FROM repositories ORDER BY full_name`
+
+	var names []string
+	err := r.db.SelectContext(ctx, &names, query)
+	if err != nil {
+		return nil, err
+	}
+	return names, nil
+}
+
+// GetPackageNames returns unique package names for dropdowns
+func (r *DependencyRepository) GetPackageNames(ctx context.Context) ([]string, error) {
+	query := `SELECT DISTINCT name FROM dependencies ORDER BY name`
 
 	var names []string
 	err := r.db.SelectContext(ctx, &names, query)
@@ -271,6 +290,157 @@ func (r *DependencyRepository) GetNewlyOutdated(ctx context.Context) ([]domain.D
 
 	var deps []domain.DependencyWithRepo
 	err := r.db.SelectContext(ctx, &deps, query)
+	if err != nil {
+		return nil, err
+	}
+	return deps, nil
+}
+
+// FilterOptions contains available filter values based on current selection
+type FilterOptions struct {
+	Repos      []string `json:"repos"`
+	Packages   []string `json:"packages"`
+	Ecosystems []string `json:"ecosystems"`
+}
+
+// GetFilterOptions returns available filter options based on current selections
+func (r *DependencyRepository) GetFilterOptions(ctx context.Context, repoFilter, ecosystemFilter, statusFilter, packageFilter string) (*FilterOptions, error) {
+	// Build WHERE clause for base filtering
+	baseWhere := "1=1"
+	args := []interface{}{}
+
+	// Status filter applies to all
+	switch statusFilter {
+	case "upgradable":
+		baseWhere += " AND d.is_outdated = TRUE"
+	case "uptodate":
+		baseWhere += " AND d.is_outdated = FALSE"
+	case "prod":
+		baseWhere += " AND d.type = 'dependency'"
+	case "dev":
+		baseWhere += " AND d.type = 'devDependency'"
+	}
+
+	// Get available repositories (filtered by ecosystem and package if selected)
+	repoWhere := baseWhere
+	repoArgs := make([]interface{}, len(args))
+	copy(repoArgs, args)
+	if ecosystemFilter != "" {
+		repoWhere += " AND d.ecosystem = ?"
+		repoArgs = append(repoArgs, ecosystemFilter)
+	}
+	if packageFilter != "" {
+		repoWhere += " AND d.name = ?"
+		repoArgs = append(repoArgs, packageFilter)
+	}
+
+	repoQuery := `SELECT DISTINCT r.full_name FROM dependencies d
+                  JOIN repositories r ON d.repository_id = r.id
+                  WHERE ` + repoWhere + ` ORDER BY r.full_name`
+	var repos []string
+	if err := r.db.SelectContext(ctx, &repos, repoQuery, repoArgs...); err != nil {
+		return nil, err
+	}
+
+	// Get available packages (filtered by repo and ecosystem if selected)
+	pkgWhere := baseWhere
+	pkgArgs := make([]interface{}, len(args))
+	copy(pkgArgs, args)
+	if repoFilter != "" {
+		pkgWhere += " AND r.full_name = ?"
+		pkgArgs = append(pkgArgs, repoFilter)
+	}
+	if ecosystemFilter != "" {
+		pkgWhere += " AND d.ecosystem = ?"
+		pkgArgs = append(pkgArgs, ecosystemFilter)
+	}
+
+	pkgQuery := `SELECT DISTINCT d.name FROM dependencies d
+                 JOIN repositories r ON d.repository_id = r.id
+                 WHERE ` + pkgWhere + ` ORDER BY d.name`
+	var packages []string
+	if err := r.db.SelectContext(ctx, &packages, pkgQuery, pkgArgs...); err != nil {
+		return nil, err
+	}
+
+	// Get available ecosystems (filtered by repo and package if selected)
+	ecoWhere := baseWhere
+	ecoArgs := make([]interface{}, len(args))
+	copy(ecoArgs, args)
+	if repoFilter != "" {
+		ecoWhere += " AND r.full_name = ?"
+		ecoArgs = append(ecoArgs, repoFilter)
+	}
+	if packageFilter != "" {
+		ecoWhere += " AND d.name = ?"
+		ecoArgs = append(ecoArgs, packageFilter)
+	}
+
+	ecoQuery := `SELECT DISTINCT d.ecosystem FROM dependencies d
+                 JOIN repositories r ON d.repository_id = r.id
+                 WHERE ` + ecoWhere + ` ORDER BY d.ecosystem`
+	var ecosystems []string
+	if err := r.db.SelectContext(ctx, &ecosystems, ecoQuery, ecoArgs...); err != nil {
+		return nil, err
+	}
+
+	return &FilterOptions{
+		Repos:      repos,
+		Packages:   packages,
+		Ecosystems: ecosystems,
+	}, nil
+}
+
+// GetFilteredWithAll returns dependencies with all filter options for CSV export
+func (r *DependencyRepository) GetFilteredWithAll(ctx context.Context, filter, repoFilter, packageFilter, ecosystemFilter, searchFilter string) ([]domain.DependencyWithRepo, error) {
+	query := `SELECT d.*, r.name as repo_name, r.full_name as repo_full_name, s.name as source_name
+              FROM dependencies d
+              JOIN repositories r ON d.repository_id = r.id
+              JOIN sources s ON r.source_id = s.id
+              WHERE 1=1`
+	args := []interface{}{}
+
+	// Apply repository filter
+	if repoFilter != "" {
+		query += " AND r.full_name = ?"
+		args = append(args, repoFilter)
+	}
+
+	// Apply package filter
+	if packageFilter != "" {
+		query += " AND d.name = ?"
+		args = append(args, packageFilter)
+	}
+
+	// Apply ecosystem filter
+	if ecosystemFilter != "" {
+		query += " AND d.ecosystem = ?"
+		args = append(args, ecosystemFilter)
+	}
+
+	// Apply search filter
+	if searchFilter != "" {
+		query += " AND (d.name LIKE ? OR r.full_name LIKE ?)"
+		searchPattern := "%" + searchFilter + "%"
+		args = append(args, searchPattern, searchPattern)
+	}
+
+	// Apply status filter
+	switch filter {
+	case "upgradable":
+		query += " AND d.is_outdated = TRUE"
+	case "uptodate":
+		query += " AND d.is_outdated = FALSE"
+	case "prod":
+		query += " AND d.type = 'dependency'"
+	case "dev":
+		query += " AND d.type = 'devDependency'"
+	}
+
+	query += " ORDER BY d.name"
+
+	var deps []domain.DependencyWithRepo
+	err := r.db.SelectContext(ctx, &deps, query, args...)
 	if err != nil {
 		return nil, err
 	}

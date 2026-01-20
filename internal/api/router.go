@@ -29,10 +29,16 @@ func NewRouter(
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
+	r.Use(apimiddleware.SecurityHeaders())
+	r.Use(apimiddleware.AuditLog())
 
 	// CORS configuration
 	corsConfig := apimiddleware.DefaultCORSConfig()
 	r.Use(apimiddleware.CORS(corsConfig))
+
+	// Authentication
+	authConfig := apimiddleware.DefaultAuthConfig()
+	r.Use(apimiddleware.Auth(authConfig))
 
 	// Rate limiting: 100 requests per second per client
 	rateLimiter := apimiddleware.NewRateLimiter(100, time.Second)
@@ -47,13 +53,16 @@ func NewRouter(
 	ignoredRepo := repository.NewIgnoredRepository(db)
 
 	// Handlers
-	healthHandler := handler.NewHealthHandler()
+	healthHandler := handler.NewHealthHandler(db)
 	sourceHandler := handler.NewSourceHandler(sourceRepo, repoRepo, depRepo)
 	repoHandler := handler.NewRepoHandler(repoRepo, depRepo)
 	depHandler := handler.NewDependencyHandler(depRepo)
 	scanHandler := handler.NewScanHandler(scanRepo, scheduler)
 	settingsHandler := handler.NewSettingsHandler(settingsRepo, scheduler, emailService)
 	ignoredHandler := handler.NewIgnoredHandler(ignoredRepo)
+
+	// Register cache invalidation callback for scan completion
+	scheduler.OnScanComplete(depHandler.ClearCache)
 
 	// API routes
 	r.Route("/api/v1", func(r chi.Router) {
@@ -83,6 +92,8 @@ func NewRouter(
 			r.Get("/upgradable", depHandler.GetUpgradable)
 			r.Get("/stats", depHandler.GetStats)
 			r.Get("/repos", depHandler.GetRepositoryNames)
+			r.Get("/packages", depHandler.GetPackageNames)
+			r.Get("/filter-options", depHandler.GetFilterOptions)
 			r.Get("/export", depHandler.ExportCSV)
 		})
 
@@ -104,6 +115,8 @@ func NewRouter(
 		r.Route("/ignored", func(r chi.Router) {
 			r.Get("/", ignoredHandler.List)
 			r.Post("/", ignoredHandler.Create)
+			r.Post("/bulk", ignoredHandler.BulkCreate)
+			r.Post("/bulk-delete", ignoredHandler.BulkDelete)
 			r.Delete("/{id}", ignoredHandler.Delete)
 		})
 	})

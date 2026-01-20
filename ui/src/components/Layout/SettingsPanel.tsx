@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import type { Source, SourceInput, Settings, IgnoredDependency } from '../../types';
+import type { Source, SourceInput, Settings } from '../../types';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type SettingsTab = 'sources' | 'schedule' | 'email' | 'ignored';
+type SettingsTab = 'sources' | 'schedule' | 'email';
 
 export function SettingsPanel({ isOpen, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('sources');
@@ -18,37 +18,13 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(true);
-  const [ignoredDeps, setIgnoredDeps] = useState<IgnoredDependency[]>([]);
-  const [ignoredLoading, setIgnoredLoading] = useState(true);
 
   useEffect(() => {
     if (isOpen) {
       loadSources();
       loadSettings();
-      loadIgnored();
     }
   }, [isOpen]);
-
-  async function loadIgnored() {
-    setIgnoredLoading(true);
-    try {
-      const data = await api.getIgnored();
-      setIgnoredDeps(data);
-    } catch (err) {
-      console.error('Failed to load ignored:', err);
-    } finally {
-      setIgnoredLoading(false);
-    }
-  }
-
-  async function handleRemoveIgnored(id: number) {
-    try {
-      await api.removeIgnored(id);
-      setIgnoredDeps(ignoredDeps.filter((d) => d.id !== id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove from ignored');
-    }
-  }
 
   async function loadSettings() {
     setSettingsLoading(true);
@@ -139,7 +115,7 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
           right: 0,
           bottom: 0,
           width: '100%',
-          maxWidth: '420px',
+          maxWidth: 'min(480px, 100vw)',
           backgroundColor: 'var(--bg-card)',
           boxShadow: '-4px 0 20px rgba(0, 0, 0, 0.15)',
           zIndex: 101,
@@ -186,7 +162,7 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
 
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)' }}>
-          {(['sources', 'schedule', 'email', 'ignored'] as const).map((tab) => (
+          {(['sources', 'schedule', 'email'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -203,7 +179,7 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
                 marginBottom: '-1px',
               }}
             >
-              {tab === 'sources' ? 'Sources' : tab === 'schedule' ? 'Schedule' : tab === 'email' ? 'Email' : 'Ignored'}
+              {tab === 'sources' ? 'Sources' : tab === 'schedule' ? 'Schedule' : 'Email'}
             </button>
           ))}
         </div>
@@ -261,14 +237,6 @@ export function SettingsPanel({ isOpen, onClose }: Props) {
               </div>
             )
           )}
-
-          {activeTab === 'ignored' && (
-            <IgnoredTab
-              ignoredDeps={ignoredDeps}
-              loading={ignoredLoading}
-              onRemove={handleRemoveIgnored}
-            />
-          )}
         </div>
       </div>
 
@@ -303,7 +271,11 @@ function SourceModal({ source, onClose, onSubmit }: {
   const [token, setToken] = useState('');
   const [organization, setOrganization] = useState(source?.organization || '');
   const [repositories, setRepositories] = useState(source?.repositories || '');
+  const [scanBranch, setScanBranch] = useState(source?.scan_branch || '');
   const [url, setUrl] = useState(source?.url || '');
+  const [insecureSkipVerify, setInsecureSkipVerify] = useState(source?.insecure_skip_verify || false);
+  const [membershipOnly, setMembershipOnly] = useState(source?.membership_only || false);
+  const [ownerOnly, setOwnerOnly] = useState(source?.owner_only || false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -318,7 +290,11 @@ function SourceModal({ source, onClose, onSubmit }: {
         token,
         organization: organization || undefined,
         repositories: repositories || undefined,
+        scan_branch: scanBranch || undefined,
         url: sourceType === 'gitlab' && url ? url : undefined,
+        insecure_skip_verify: sourceType === 'gitlab' ? insecureSkipVerify : undefined,
+        membership_only: sourceType === 'gitlab' ? membershipOnly : undefined,
+        owner_only: sourceType === 'github' ? ownerOnly : undefined,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : (isEditing ? 'Failed to update source' : 'Failed to add source'));
@@ -441,21 +417,53 @@ function SourceModal({ source, onClose, onSubmit }: {
           </div>
 
           {sourceType === 'gitlab' && (
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                GitLab URL (optional)
-              </label>
-              <input
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://gitlab.com"
-                style={inputStyle}
-              />
-              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Leave empty for gitlab.com
-              </p>
-            </div>
+            <>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  GitLab URL (optional)
+                </label>
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://gitlab.com"
+                  style={inputStyle}
+                />
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Leave empty for gitlab.com
+                </p>
+              </div>
+              {url && (
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={insecureSkipVerify}
+                      onChange={(e) => setInsecureSkipVerify(e.target.checked)}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>Skip TLS certificate verification</span>
+                  </label>
+                  <p style={{ fontSize: '11px', color: 'var(--warning-text, #f59e0b)', marginTop: '4px', marginLeft: '26px' }}>
+                    Only enable for self-hosted instances with invalid certificates
+                  </p>
+                </div>
+              )}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={membershipOnly}
+                    onChange={(e) => setMembershipOnly(e.target.checked)}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>Only projects I'm a member of</span>
+                </label>
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', marginLeft: '26px' }}>
+                  Uncheck to scan all accessible projects (requires admin access)
+                </p>
+              </div>
+            </>
           )}
 
           <div style={{ marginBottom: '14px' }}>
@@ -497,6 +505,23 @@ function SourceModal({ source, onClose, onSubmit }: {
             </p>
           </div>
 
+          {sourceType === 'github' && (
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={ownerOnly}
+                  onChange={(e) => setOwnerOnly(e.target.checked)}
+                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>Only repos I own</span>
+              </label>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', marginLeft: '26px' }}>
+                {organization ? 'Only applies when no organization is set' : 'Uncheck to include collaborator and organization repos'}
+              </p>
+            </div>
+          )}
+
           <div style={{ marginBottom: '14px' }}>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
               Repositories (optional)
@@ -510,6 +535,22 @@ function SourceModal({ source, onClose, onSubmit }: {
             />
             <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
               Comma-separated. Leave empty to scan all repos.
+            </p>
+          </div>
+
+          <div style={{ marginBottom: '14px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '6px' }}>
+              Branch (optional)
+            </label>
+            <input
+              type="text"
+              value={scanBranch}
+              onChange={(e) => setScanBranch(e.target.value)}
+              placeholder="main, develop, release"
+              style={inputStyle}
+            />
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+              Branch to scan. Leave empty for each repo's default branch.
             </p>
           </div>
 
@@ -841,6 +882,8 @@ function EmailTab({ settings, onUpdate, onTestEmail }: {
   async function handleTest() {
     setTesting(true);
     try {
+      // Save settings first, then test
+      await onUpdate(form);
       await onTestEmail();
     } finally {
       setTesting(false);
@@ -998,87 +1041,6 @@ function EmailTab({ settings, onUpdate, onTestEmail }: {
           {testing ? 'Sending...' : 'Send Test'}
         </button>
       </div>
-    </div>
-  );
-}
-
-function IgnoredTab({ ignoredDeps, loading, onRemove }: {
-  ignoredDeps: IgnoredDependency[];
-  loading: boolean;
-  onRemove: (id: number) => void;
-}) {
-  return (
-    <div>
-      <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 16px' }}>
-        Ignored Dependencies
-      </h3>
-
-      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-        Ignored dependencies will still be tracked but won't appear as "upgradable" in notifications.
-      </p>
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
-          Loading...
-        </div>
-      ) : ignoredDeps.length === 0 ? (
-        <div style={{
-          padding: '32px 16px',
-          textAlign: 'center',
-          backgroundColor: 'var(--bg-primary)',
-          borderRadius: '8px',
-          border: '1px solid var(--border-color)',
-        }}>
-          <div style={{ fontSize: '32px', marginBottom: '12px' }}>📋</div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: 0 }}>
-            No ignored dependencies
-          </p>
-          <p style={{ color: 'var(--text-muted)', fontSize: '12px', margin: '8px 0 0' }}>
-            Use the "Ignore" button on dependencies to add them here
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {ignoredDeps.map((dep) => (
-            <div
-              key={dep.id}
-              style={{
-                padding: '12px 16px',
-                borderRadius: '8px',
-                backgroundColor: 'var(--bg-primary)',
-                border: '1px solid var(--border-color)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>
-                  {dep.name}
-                </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  {dep.ecosystem || 'All ecosystems'} · Added {new Date(dep.created_at).toLocaleDateString()}
-                </div>
-              </div>
-              <button
-                onClick={() => onRemove(dep.id)}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  backgroundColor: 'var(--danger-bg)',
-                  color: 'var(--danger-text)',
-                  fontSize: '12px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

@@ -26,7 +26,7 @@ func NewSourceHandler(repo *repository.SourceRepository, repoRep *repository.Rep
 func (h *SourceHandler) List(w http.ResponseWriter, r *http.Request) {
 	sources, err := h.repo.GetAll(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 	if sources == nil {
@@ -38,13 +38,13 @@ func (h *SourceHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *SourceHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		RespondBadRequest(w, "invalid id")
 		return
 	}
 
 	source, err := h.repo.GetByID(r.Context(), id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		RespondNotFound(w, "source not found")
 		return
 	}
 	json.NewEncoder(w).Encode(source)
@@ -53,12 +53,12 @@ func (h *SourceHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *SourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var input domain.SourceInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		RespondBadRequest(w, "invalid request body")
 		return
 	}
 
 	if input.Name == "" || input.Token == "" {
-		http.Error(w, "name and token are required", http.StatusBadRequest)
+		RespondBadRequest(w, "name and token are required")
 		return
 	}
 
@@ -68,22 +68,22 @@ func (h *SourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Validate token based on source type
 	if input.Type == "gitlab" {
-		glClient := gitlab.New(input.Token, input.URL, input.Organization)
+		glClient := gitlab.New(input.Token, input.URL, input.Organization, input.InsecureSkipVerify, input.MembershipOnly)
 		if err := glClient.ValidateToken(context.Background()); err != nil {
-			http.Error(w, "invalid token: "+err.Error(), http.StatusBadRequest)
+			RespondError(w, http.StatusBadRequest, "invalid token: unable to authenticate", err)
 			return
 		}
 	} else {
-		ghClient := github.New(input.Token, input.Organization)
+		ghClient := github.New(input.Token, input.Organization, input.OwnerOnly)
 		if err := ghClient.ValidateToken(context.Background()); err != nil {
-			http.Error(w, "invalid token: "+err.Error(), http.StatusBadRequest)
+			RespondError(w, http.StatusBadRequest, "invalid token: unable to authenticate", err)
 			return
 		}
 	}
 
 	source, err := h.repo.Create(r.Context(), input)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 
@@ -94,7 +94,7 @@ func (h *SourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *SourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		RespondBadRequest(w, "invalid id")
 		return
 	}
 
@@ -102,17 +102,17 @@ func (h *SourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	// Cascade delete: dependencies -> repositories -> source
 	if err := h.depRepo.DeleteBySourceID(ctx, id); err != nil {
-		http.Error(w, "failed to delete dependencies: "+err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 
 	if err := h.repoRep.DeleteBySourceID(ctx, id); err != nil {
-		http.Error(w, "failed to delete repositories: "+err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 
 	if err := h.repo.Delete(ctx, id); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 
@@ -122,18 +122,18 @@ func (h *SourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 func (h *SourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		RespondBadRequest(w, "invalid id")
 		return
 	}
 
 	var input domain.SourceInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		RespondBadRequest(w, "invalid request body")
 		return
 	}
 
 	if input.Name == "" || input.Token == "" {
-		http.Error(w, "name and token are required", http.StatusBadRequest)
+		RespondBadRequest(w, "name and token are required")
 		return
 	}
 
@@ -143,22 +143,22 @@ func (h *SourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	// Validate token based on source type
 	if input.Type == "gitlab" {
-		glClient := gitlab.New(input.Token, input.URL, input.Organization)
+		glClient := gitlab.New(input.Token, input.URL, input.Organization, input.InsecureSkipVerify, input.MembershipOnly)
 		if err := glClient.ValidateToken(context.Background()); err != nil {
-			http.Error(w, "invalid token: "+err.Error(), http.StatusBadRequest)
+			RespondError(w, http.StatusBadRequest, "invalid token: unable to authenticate", err)
 			return
 		}
 	} else {
-		ghClient := github.New(input.Token, input.Organization)
+		ghClient := github.New(input.Token, input.Organization, input.OwnerOnly)
 		if err := ghClient.ValidateToken(context.Background()); err != nil {
-			http.Error(w, "invalid token: "+err.Error(), http.StatusBadRequest)
+			RespondError(w, http.StatusBadRequest, "invalid token: unable to authenticate", err)
 			return
 		}
 	}
 
 	source, err := h.repo.Update(r.Context(), id, input)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 

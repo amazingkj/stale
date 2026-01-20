@@ -5,7 +5,9 @@ import (
 	"strconv"
 
 	"github.com/jiin/stale/internal/domain"
+	"github.com/jiin/stale/internal/util"
 	"github.com/jmoiron/sqlx"
+	"github.com/rs/zerolog/log"
 )
 
 type SettingsRepository struct {
@@ -32,6 +34,17 @@ func (r *SettingsRepository) Get(ctx context.Context) (*domain.Settings, error) 
 		values[key] = value
 	}
 
+	// Decrypt SMTP password
+	smtpPass := values["email_smtp_pass"]
+	if smtpPass != "" {
+		decrypted, err := util.Decrypt(smtpPass)
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to decrypt SMTP password, using as-is")
+		} else {
+			smtpPass = decrypted
+		}
+	}
+
 	settings := &domain.Settings{
 		ScheduleEnabled:        values["schedule_enabled"] == "true",
 		ScheduleCron:           values["schedule_cron"],
@@ -39,7 +52,7 @@ func (r *SettingsRepository) Get(ctx context.Context) (*domain.Settings, error) 
 		EmailSMTPHost:          values["email_smtp_host"],
 		EmailSMTPPort:          parseIntOrDefault(values["email_smtp_port"], 587),
 		EmailSMTPUser:          values["email_smtp_user"],
-		EmailSMTPPass:          values["email_smtp_pass"],
+		EmailSMTPPass:          smtpPass,
 		EmailFrom:              values["email_from"],
 		EmailTo:                values["email_to"],
 		EmailNotifyNewOutdated: values["email_notify_new_outdated"] != "false",
@@ -93,7 +106,12 @@ func (r *SettingsRepository) Update(ctx context.Context, input *domain.SettingsI
 		}
 	}
 	if input.EmailSMTPPass != nil {
-		if err := updateSetting("email_smtp_pass", *input.EmailSMTPPass); err != nil {
+		// Encrypt SMTP password before storing
+		encryptedPass, err := util.Encrypt(*input.EmailSMTPPass)
+		if err != nil {
+			return err
+		}
+		if err := updateSetting("email_smtp_pass", encryptedPass); err != nil {
 			return err
 		}
 	}

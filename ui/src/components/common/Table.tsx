@@ -34,12 +34,13 @@ export function TableBody({ children }: { children: ReactNode }) {
   return <tbody>{children}</tbody>;
 }
 
-export function TableRow({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
+export function TableRow({ children, onClick, style }: { children: ReactNode; onClick?: () => void; style?: CSSProperties }) {
   return (
     <tr
       style={{
         borderBottom: '1px solid var(--border-color)',
         cursor: onClick ? 'pointer' : 'default',
+        ...style,
       }}
       onClick={onClick}
     >
@@ -52,18 +53,26 @@ interface TableHeaderCellProps {
   children?: ReactNode;
   style?: CSSProperties;
   width?: string;
+  noEllipsis?: boolean;
+  colSpan?: number;
 }
 
-export function Th({ children, style, width }: TableHeaderCellProps) {
+export function Th({ children, style, width, noEllipsis, colSpan }: TableHeaderCellProps) {
   return (
-    <th style={{
-      ...tableHeaderStyle,
-      width,
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-      ...style,
-    }}>
+    <th
+      colSpan={colSpan}
+      scope="col"
+      style={{
+        ...tableHeaderStyle,
+        width,
+        ...(noEllipsis ? {} : {
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }),
+        ...style,
+      }}
+    >
       {children}
     </th>
   );
@@ -74,9 +83,10 @@ interface TableCellProps {
   style?: CSSProperties;
   muted?: boolean;
   secondary?: boolean;
+  noEllipsis?: boolean;
 }
 
-export function Td({ children, style, muted, secondary }: TableCellProps) {
+export function Td({ children, style, muted, secondary, noEllipsis }: TableCellProps) {
   return (
     <td
       style={{
@@ -86,10 +96,12 @@ export function Td({ children, style, muted, secondary }: TableCellProps) {
           : secondary
           ? 'var(--text-secondary)'
           : 'var(--text-primary)',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-        maxWidth: 0,
+        ...(noEllipsis ? {} : {
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          maxWidth: 0,
+        }),
         ...style,
       }}
       title={typeof children === 'string' ? children : undefined}

@@ -25,12 +25,12 @@ func (h *RepoHandler) List(w http.ResponseWriter, r *http.Request) {
 	if sourceIDStr != "" {
 		sourceID, err := strconv.ParseInt(sourceIDStr, 10, 64)
 		if err != nil {
-			http.Error(w, "invalid source_id", http.StatusBadRequest)
+			RespondBadRequest(w, "invalid source_id")
 			return
 		}
 		repos, err := h.repo.GetBySourceID(r.Context(), sourceID)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			RespondInternalError(w, err)
 			return
 		}
 		if repos == nil {
@@ -42,7 +42,7 @@ func (h *RepoHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	repos, err := h.repo.GetAll(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 	if repos == nil {
@@ -54,13 +54,13 @@ func (h *RepoHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *RepoHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		RespondBadRequest(w, "invalid id")
 		return
 	}
 
 	repo, err := h.repo.GetByID(r.Context(), id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		RespondNotFound(w, "repository not found")
 		return
 	}
 	json.NewEncoder(w).Encode(repo)
@@ -69,13 +69,13 @@ func (h *RepoHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *RepoHandler) GetDependencies(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		RespondBadRequest(w, "invalid id")
 		return
 	}
 
 	deps, err := h.depRepo.GetByRepoID(r.Context(), id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 	if deps == nil {
@@ -87,19 +87,19 @@ func (h *RepoHandler) GetDependencies(w http.ResponseWriter, r *http.Request) {
 func (h *RepoHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		RespondBadRequest(w, "invalid id")
 		return
 	}
 
 	// Delete dependencies first
 	if err := h.depRepo.DeleteByRepoID(r.Context(), id); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 
 	// Delete repository
 	if err := h.repo.Delete(r.Context(), id); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 
@@ -113,12 +113,12 @@ type BulkDeleteRequest struct {
 func (h *RepoHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 	var req BulkDeleteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		RespondBadRequest(w, "invalid request body")
 		return
 	}
 
 	if len(req.IDs) == 0 {
-		http.Error(w, "no ids provided", http.StatusBadRequest)
+		RespondBadRequest(w, "no ids provided")
 		return
 	}
 

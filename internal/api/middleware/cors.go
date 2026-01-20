@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 // CORSConfig holds CORS configuration
@@ -19,8 +21,10 @@ type CORSConfig struct {
 func DefaultCORSConfig() CORSConfig {
 	origins := os.Getenv("CORS_ALLOWED_ORIGINS")
 	if origins == "" {
-		// Default: allow same origin only (empty = no CORS headers, browser enforces same-origin)
-		origins = "*" // For development; in production, set specific origins
+		origins = "*"
+		log.Warn().Msg("CORS_ALLOWED_ORIGINS not set - allowing all origins (*). Set specific origins for production.")
+	} else {
+		log.Info().Str("origins", origins).Msg("CORS configured with allowed origins")
 	}
 
 	var allowedOrigins []string
@@ -33,7 +37,7 @@ func DefaultCORSConfig() CORSConfig {
 	return CORSConfig{
 		AllowedOrigins: allowedOrigins,
 		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-Requested-With"},
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-Requested-With", "X-API-Key"},
 		MaxAge:         86400, // 24 hours
 	}
 }

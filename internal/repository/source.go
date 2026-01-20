@@ -25,13 +25,13 @@ func (r *SourceRepository) Create(ctx context.Context, input domain.SourceInput)
 		return nil, err
 	}
 
-	query := `INSERT INTO sources (name, type, token, organization, url, repositories, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-              RETURNING id, name, type, token, organization, url, repositories, created_at, updated_at, last_scan_at`
+	query := `INSERT INTO sources (name, type, token, organization, url, repositories, scan_branch, insecure_skip_verify, membership_only, owner_only, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              RETURNING id, name, type, token, organization, url, repositories, scan_branch, insecure_skip_verify, membership_only, owner_only, created_at, updated_at, last_scan_at`
 
 	now := time.Now()
 	var source domain.Source
-	err = r.db.GetContext(ctx, &source, query, input.Name, input.Type, encryptedToken, input.Organization, input.URL, input.Repositories, now, now)
+	err = r.db.GetContext(ctx, &source, query, input.Name, input.Type, encryptedToken, input.Organization, input.URL, input.Repositories, input.ScanBranch, input.InsecureSkipVerify, input.MembershipOnly, input.OwnerOnly, now, now)
 	if err != nil {
 		return nil, err
 	}
@@ -97,12 +97,12 @@ func (r *SourceRepository) Update(ctx context.Context, id int64, input domain.So
 		return nil, err
 	}
 
-	query := `UPDATE sources SET name = ?, type = ?, token = ?, organization = ?, url = ?, repositories = ?, updated_at = ?
+	query := `UPDATE sources SET name = ?, type = ?, token = ?, organization = ?, url = ?, repositories = ?, scan_branch = ?, insecure_skip_verify = ?, membership_only = ?, owner_only = ?, updated_at = ?
               WHERE id = ?
-              RETURNING id, name, type, token, organization, url, repositories, created_at, updated_at, last_scan_at`
+              RETURNING id, name, type, token, organization, url, repositories, scan_branch, insecure_skip_verify, membership_only, owner_only, created_at, updated_at, last_scan_at`
 
 	var source domain.Source
-	err = r.db.GetContext(ctx, &source, query, input.Name, input.Type, encryptedToken, input.Organization, input.URL, input.Repositories, time.Now(), id)
+	err = r.db.GetContext(ctx, &source, query, input.Name, input.Type, encryptedToken, input.Organization, input.URL, input.Repositories, input.ScanBranch, input.InsecureSkipVerify, input.MembershipOnly, input.OwnerOnly, time.Now(), id)
 	if err != nil {
 		return nil, err
 	}

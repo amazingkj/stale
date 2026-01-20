@@ -33,12 +33,13 @@ export function LoadingSpinner({ size = 'md', text, fullPage }: Props) {
       };
 
   return (
-    <div style={containerStyle}>
+    <div style={containerStyle} role="status" aria-label={text || 'Loading'}>
       <svg
         width={spinnerSize}
         height={spinnerSize}
         viewBox="0 0 24 24"
         style={{ animation: 'spin 1s linear infinite' }}
+        aria-hidden="true"
       >
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
         <circle

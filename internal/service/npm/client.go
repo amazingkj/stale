@@ -8,14 +8,19 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/jiin/stale/internal/service/cache"
 	"github.com/jiin/stale/internal/service/httputil"
 )
 
 const registryURL = "https://registry.npmjs.org"
 
+// Cache TTL: 1 hour - npm versions don't change that frequently
+const cacheTTL = 1 * time.Hour
+
 type Client struct {
 	httpClient  *http.Client
 	retryConfig httputil.RetryConfig
+	cache       *cache.Cache[string]
 }
 
 type PackageInfo struct {
@@ -26,10 +31,16 @@ func New() *Client {
 	return &Client{
 		httpClient:  httputil.NewClient(10 * time.Second),
 		retryConfig: httputil.DefaultRetryConfig(),
+		cache:       cache.New[string](cacheTTL),
 	}
 }
 
 func (c *Client) GetLatestVersion(ctx context.Context, packageName string) (string, error) {
+	// Check cache first
+	if version, found := c.cache.Get(packageName); found {
+		return version, nil
+	}
+
 	encodedName := url.PathEscape(packageName)
 	reqURL := fmt.Sprintf("%s/%s", registryURL, encodedName)
 
@@ -59,6 +70,8 @@ func (c *Client) GetLatestVersion(ctx context.Context, packageName string) (stri
 	}
 
 	if latest, ok := info.DistTags["latest"]; ok {
+		// Store in cache
+		c.cache.Set(packageName, latest)
 		return latest, nil
 	}
 

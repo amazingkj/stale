@@ -111,6 +111,8 @@ export function Button({
         ...style,
       }}
       disabled={isDisabled}
+      aria-busy={loading}
+      aria-disabled={isDisabled}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       {...props}
@@ -128,6 +130,7 @@ function Spinner() {
       height="16"
       viewBox="0 0 24 24"
       style={{ animation: 'spin 1s linear infinite' }}
+      aria-hidden="true"
     >
       <circle
         cx="12"

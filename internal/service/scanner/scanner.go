@@ -189,10 +189,10 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source, scanID i
 
 	switch source.Type {
 	case "gitlab":
-		glClient := gitlab.New(source.Token, source.URL, source.Organization)
+		glClient := gitlab.New(source.Token, source.URL, source.Organization, source.InsecureSkipVerify, source.MembershipOnly)
 		provider = &GitLabAdapter{client: glClient}
 	default: // github
-		ghClient := github.New(source.Token, source.Organization)
+		ghClient := github.New(source.Token, source.Organization, source.OwnerOnly)
 		provider = &GitHubAdapter{client: ghClient}
 	}
 
@@ -216,12 +216,18 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source, scanID i
 	}
 
 	for _, repo := range repos {
-		log.Info().Str("repo", repo.FullName).Str("branch", repo.DefaultBranch).Msg("scanning repository")
+		// Use source.ScanBranch if set, otherwise use repo's default branch
+		scanBranch := repo.DefaultBranch
+		if source.ScanBranch != "" {
+			scanBranch = source.ScanBranch
+		}
+
+		log.Info().Str("repo", repo.FullName).Str("branch", scanBranch).Msg("scanning repository")
 		repoEntity := domain.Repository{
 			SourceID:      source.ID,
 			Name:          repo.Name,
 			FullName:      repo.FullName,
-			DefaultBranch: repo.DefaultBranch,
+			DefaultBranch: scanBranch,
 			HTMLURL:       repo.HTMLURL,
 		}
 
@@ -239,7 +245,7 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source, scanID i
 
 		for _, file := range manifestFiles {
 			go func(f string) {
-				content, err := provider.GetFileContent(ctx, repo.FullName, f, repo.DefaultBranch)
+				content, err := provider.GetFileContent(ctx, repo.FullName, f, scanBranch)
 				if err != nil {
 					results <- manifestResult{f, nil}
 				} else {

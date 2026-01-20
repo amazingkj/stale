@@ -8,14 +8,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jiin/stale/internal/service/cache"
 	"github.com/jiin/stale/internal/service/httputil"
 )
 
 const proxyURL = "https://proxy.golang.org"
 
+// Cache TTL: 1 hour - go module versions don't change that frequently
+const cacheTTL = 1 * time.Hour
+
 type Client struct {
 	httpClient  *http.Client
 	retryConfig httputil.RetryConfig
+	cache       *cache.Cache[string]
 }
 
 type ModuleInfo struct {
@@ -27,10 +32,16 @@ func New() *Client {
 	return &Client{
 		httpClient:  httputil.NewClient(10 * time.Second),
 		retryConfig: httputil.DefaultRetryConfig(),
+		cache:       cache.New[string](cacheTTL),
 	}
 }
 
 func (c *Client) GetLatestVersion(ctx context.Context, modulePath string) (string, error) {
+	// Check cache first
+	if version, found := c.cache.Get(modulePath); found {
+		return version, nil
+	}
+
 	// Encode module path: replace / with encoded form
 	encodedPath := strings.ReplaceAll(modulePath, "/", "/")
 	// For case-insensitive paths, lowercase and add ! prefix to uppercase letters
@@ -70,5 +81,7 @@ func (c *Client) GetLatestVersion(ctx context.Context, modulePath string) (strin
 		return "", err
 	}
 
+	// Store in cache
+	c.cache.Set(modulePath, info.Version)
 	return info.Version, nil
 }

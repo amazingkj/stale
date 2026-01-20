@@ -16,4 +16,7 @@ type Repository struct {
 	CreatedAt      time.Time  `db:"created_at" json:"created_at"`
 	UpdatedAt      time.Time  `db:"updated_at" json:"updated_at"`
 	LastScanAt     *time.Time `db:"last_scan_at" json:"last_scan_at,omitempty"`
+	// Computed fields (not in DB)
+	DependencyCount int `db:"dependency_count" json:"dependency_count"`
+	OutdatedCount   int `db:"outdated_count" json:"outdated_count"`
 }

@@ -34,6 +34,7 @@ const filterLabels: Record<CardFilter, string> = {
 
 export function Dashboard() {
   const [allDeps, setAllDeps] = useState<Dependency[]>([]);
+  const [repositories, setRepositories] = useState<string[]>([]);
   const [scanning, setScanning] = useState(false);
   const [currentScan, setCurrentScan] = useState<ScanJob | null>(null);
   const [lastScanTime, setLastScanTime] = useState<string | null>(null);
@@ -41,17 +42,7 @@ export function Dashboard() {
   const [selectedRepo, setSelectedRepo] = useState<string>('all');
   const [cardFilter, setCardFilter] = useState<CardFilter>('all');
   const [search, setSearch] = useState('');
-
-  // Extract unique repositories from dependencies
-  const repositories = useMemo(() => {
-    const repoSet = new Set<string>();
-    allDeps.forEach(dep => {
-      if (dep.repo_full_name) {
-        repoSet.add(dep.repo_full_name);
-      }
-    });
-    return Array.from(repoSet).sort();
-  }, [allDeps]);
+  const [displayLimit, setDisplayLimit] = useState(20);
 
   // Filter dependencies by selected repo
   const repoFilteredDeps = useMemo(() => {
@@ -109,12 +100,14 @@ export function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [deps, scans, runningScan] = await Promise.all([
+      const [deps, scans, runningScan, repos] = await Promise.all([
         api.getDependencies(),
         api.getScans(),
         api.getRunningScan(),
+        api.getRepositoryNames(),
       ]);
       setAllDeps(deps);
+      setRepositories(repos);
 
       // Check if there's a running scan
       if (runningScan) {
@@ -211,6 +204,12 @@ export function Dashboard() {
 
   const handleRepoChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedRepo(e.target.value);
+    setDisplayLimit(20); // Reset limit when filter changes
+  }, []);
+
+  const handleCardFilterChange = useCallback((filter: CardFilter) => {
+    setCardFilter(filter);
+    setDisplayLimit(20); // Reset limit when filter changes
   }, []);
 
   const outdatedPercent = stats.total_dependencies > 0
@@ -321,7 +320,7 @@ export function Dashboard() {
           value={stats.total_dependencies}
           color="accent"
           active={cardFilter === 'all'}
-          onClick={() => setCardFilter('all')}
+          onClick={() => handleCardFilterChange('all')}
         />
         <StatCard
           label="Upgradable"
@@ -329,28 +328,28 @@ export function Dashboard() {
           subtitle={stats.total_dependencies ? `${outdatedPercent}%` : undefined}
           color="danger"
           active={cardFilter === 'upgradable'}
-          onClick={() => setCardFilter('upgradable')}
+          onClick={() => handleCardFilterChange('upgradable')}
         />
         <StatCard
           label="Up to Date"
           value={stats.up_to_date_count}
           color="success"
           active={cardFilter === 'uptodate'}
-          onClick={() => setCardFilter('uptodate')}
+          onClick={() => handleCardFilterChange('uptodate')}
         />
         <StatCard
           label="Production"
           value={stats.by_type?.dependency ?? 0}
           color="warning"
           active={cardFilter === 'prod'}
-          onClick={() => setCardFilter('prod')}
+          onClick={() => handleCardFilterChange('prod')}
         />
         <StatCard
           label="Development"
           value={stats.by_type?.devDependency ?? 0}
           color="accent"
           active={cardFilter === 'dev'}
-          onClick={() => setCardFilter('dev')}
+          onClick={() => handleCardFilterChange('dev')}
         />
       </div>
 
@@ -366,7 +365,13 @@ export function Dashboard() {
             </span>
           </div>
           <Link
-            to={cardFilter === 'all' ? '/dependencies' : `/dependencies?filter=${cardFilter}`}
+            to={(() => {
+              const params = new URLSearchParams();
+              if (cardFilter !== 'all') params.set('filter', cardFilter);
+              if (selectedRepo !== 'all') params.set('repo', selectedRepo);
+              const query = params.toString();
+              return query ? `/dependencies?${query}` : '/dependencies';
+            })()}
             style={{
               fontSize: '13px',
               color: 'var(--accent)',
@@ -398,7 +403,7 @@ export function Dashboard() {
                 <Th width="17.5%">Latest</Th>
               </TableHead>
               <TableBody>
-                {displayDeps.slice(0, 20).map((dep) => (
+                {displayDeps.slice(0, displayLimit).map((dep) => (
                   <TableRow key={dep.id}>
                     <Td>
                       <a
@@ -424,15 +429,41 @@ export function Dashboard() {
                 ))}
               </TableBody>
             </Table>
-            {displayDeps.length > 20 && (
+            {displayDeps.length > displayLimit && (
               <div style={{
                 padding: '12px 20px',
                 textAlign: 'center',
                 color: 'var(--text-muted)',
                 fontSize: '13px',
                 borderTop: '1px solid var(--border-color)',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: '16px',
               }}>
-                Showing 20 of {displayDeps.length} • <Link to={cardFilter === 'all' ? '/dependencies' : `/dependencies?filter=${cardFilter}`} style={{ color: 'var(--accent)' }}>View all</Link>
+                <span>Showing {displayLimit} of {displayDeps.length}</span>
+                <button
+                  onClick={() => setDisplayLimit(prev => Math.min(prev + 50, displayDeps.length))}
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    color: 'var(--accent)',
+                    backgroundColor: 'var(--accent-light)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  +50 more
+                </button>
+                <Link to={(() => {
+                  const params = new URLSearchParams();
+                  if (cardFilter !== 'all') params.set('filter', cardFilter);
+                  if (selectedRepo !== 'all') params.set('repo', selectedRepo);
+                  const query = params.toString();
+                  return query ? `/dependencies?${query}` : '/dependencies';
+                })()} style={{ color: 'var(--accent)' }}>View all →</Link>
               </div>
             )}
           </>

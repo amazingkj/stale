@@ -148,6 +148,11 @@ function SourceCard({ source, onEdit, onDelete }: SourceCardProps) {
                     ({source.repositories.split(',').length} repo{source.repositories.split(',').length > 1 ? 's' : ''} selected)
                   </span>
                 )}
+                {source.scan_branch && (
+                  <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--accent)' }}>
+                    branch: {source.scan_branch}
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -192,6 +197,7 @@ function SourceModal({ source, onClose, onSubmit }: SourceModalProps) {
   const [organization, setOrganization] = useState(source?.organization || '');
   const [url, setUrl] = useState(source?.url || '');
   const [repositories, setRepositories] = useState(source?.repositories || '');
+  const [scanBranch, setScanBranch] = useState(source?.scan_branch || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -207,12 +213,13 @@ function SourceModal({ source, onClose, onSubmit }: SourceModalProps) {
         organization: organization || undefined,
         url: url || undefined,
         repositories: repositories || undefined,
+        scan_branch: scanBranch || undefined,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : (isEditing ? 'Failed to update source' : 'Failed to add source'));
       setLoading(false);
     }
-  }, [name, type, token, organization, url, repositories, isEditing, onSubmit]);
+  }, [name, type, token, organization, url, repositories, scanBranch, isEditing, onSubmit]);
 
   return (
     <Modal
@@ -316,6 +323,18 @@ function SourceModal({ source, onClose, onSubmit }: SourceModalProps) {
           />
           <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
             Comma-separated list of repos to scan. Leave empty to scan all repos.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <Input
+            label="Branch (optional)"
+            value={scanBranch}
+            onChange={(e) => setScanBranch(e.target.value)}
+            placeholder="main, develop, release"
+          />
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
+            Branch to scan. Leave empty to use each repo's default branch.
           </p>
         </div>
 

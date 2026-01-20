@@ -10,13 +10,13 @@ interface Props {
 }
 
 const baseStyle: CSSProperties = {
-  padding: '4px 8px',
-  borderRadius: '6px',
-  fontSize: '12px',
+  padding: '3px 6px',
+  borderRadius: '4px',
+  fontSize: '11px',
   fontWeight: 500,
   display: 'inline-flex',
   alignItems: 'center',
-  gap: '4px',
+  gap: '3px',
 };
 
 export function Badge({ children, color = 'muted', style }: Props) {
@@ -38,14 +38,14 @@ export function EcosystemBadge({ ecosystem }: { ecosystem: string }) {
   const config: Record<string, { color: BadgeColor; label: string }> = {
     npm: { color: 'warning', label: 'npm' },
     go: { color: 'accent', label: 'go' },
-    maven: { color: 'danger', label: 'maven' },
+    maven: { color: 'purple', label: 'maven' },
     gradle: { color: 'success', label: 'gradle' },
   };
 
   const { color, label } = config[ecosystem] || { color: 'muted', label: ecosystem };
 
   return (
-    <Badge color={color} style={{ fontSize: '12px', fontWeight: 600, padding: '4px 8px' }}>
+    <Badge color={color} style={{ fontSize: '10px', fontWeight: 600, padding: '3px 6px' }}>
       {label}
     </Badge>
   );
@@ -55,7 +55,7 @@ export function TypeBadge({ type }: { type: 'dependency' | 'devDependency' }) {
   return (
     <Badge
       color={type === 'dependency' ? 'warning' : 'muted'}
-      style={{ fontSize: '12px' }}
+      style={{ fontSize: '10px' }}
     >
       {type === 'dependency' ? 'prod' : 'dev'}
     </Badge>
@@ -71,10 +71,10 @@ export function VersionBadge({ version, isOutdated }: { version: string; isOutda
       color={color}
       style={{
         fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-        fontSize: '13px',
+        fontSize: '11px',
         fontWeight: 600,
         letterSpacing: '0.3px',
-        padding: '5px 10px',
+        padding: '4px 8px',
       }}
     >
       {version || '-'}
@@ -97,10 +97,10 @@ export function VersionDiffBadge({ diffType }: { diffType: VersionDiffType }) {
     <Badge
       color={color}
       style={{
-        fontSize: '10px',
+        fontSize: '9px',
         fontWeight: 600,
-        padding: '2px 6px',
-        marginLeft: '6px',
+        padding: '2px 5px',
+        marginLeft: '4px',
       }}
     >
       {label}

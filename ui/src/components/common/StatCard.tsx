@@ -13,34 +13,34 @@ interface Props {
 
 const icons: Record<string, ReactNode> = {
   total: (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M16.5 9.4l-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
       <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
       <line x1="12" y1="22.08" x2="12" y2="12" />
     </svg>
   ),
   upgradable: (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10" />
       <polyline points="16 12 12 8 8 12" />
       <line x1="12" y1="16" x2="12" y2="8" />
     </svg>
   ),
   uptodate: (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
       <polyline points="22 4 12 14.01 9 11.01" />
     </svg>
   ),
   prod: (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2L2 7l10 5 10-5-10-5z" />
       <path d="M2 17l10 5 10-5" />
       <path d="M2 12l10 5 10-5" />
     </svg>
   ),
   dev: (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="16 18 22 12 16 6" />
       <polyline points="8 6 2 12 8 18" />
     </svg>
@@ -53,8 +53,8 @@ export function StatCard({ label, value, subtitle, color, icon, active, onClick 
   const displayIcon = icon || icons[labelLower];
 
   const cardStyle: CSSProperties = {
-    padding: '20px',
-    borderRadius: 'var(--radius-lg)',
+    padding: '16px',
+    borderRadius: 'var(--radius-md)',
     backgroundColor: active ? colors.bg : 'var(--bg-card)',
     cursor: onClick ? 'pointer' : 'default',
     border: `2px solid ${active ? colors.text : 'var(--border-color)'}`,
@@ -86,9 +86,9 @@ export function StatCard({ label, value, subtitle, color, icon, active, onClick 
         }
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
         <div style={{
-          fontSize: '13px',
+          fontSize: '11px',
           fontWeight: 500,
           color: active ? colors.text : 'var(--text-secondary)',
           textTransform: 'uppercase',
@@ -106,7 +106,7 @@ export function StatCard({ label, value, subtitle, color, icon, active, onClick 
         )}
       </div>
       <div style={{
-        fontSize: '36px',
+        fontSize: '30px',
         fontWeight: 700,
         color: active ? colors.text : 'var(--text-primary)',
         lineHeight: 1,
@@ -116,9 +116,9 @@ export function StatCard({ label, value, subtitle, color, icon, active, onClick 
       </div>
       {subtitle && (
         <div style={{
-          fontSize: '13px',
+          fontSize: '12px',
           color: active ? colors.text : 'var(--text-muted)',
-          marginTop: '8px',
+          marginTop: '6px',
           opacity: active ? 0.8 : 1,
         }}>
           {subtitle}

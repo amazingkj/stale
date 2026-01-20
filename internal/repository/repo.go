@@ -43,8 +43,13 @@ func (r *RepoRepository) Upsert(ctx context.Context, repo domain.Repository) (in
 }
 
 func (r *RepoRepository) GetAll(ctx context.Context) ([]domain.Repository, error) {
+	query := `SELECT r.*,
+		COALESCE((SELECT COUNT(*) FROM dependencies d WHERE d.repository_id = r.id), 0) as dependency_count,
+		COALESCE((SELECT COUNT(*) FROM dependencies d WHERE d.repository_id = r.id AND d.is_outdated = TRUE), 0) as outdated_count
+		FROM repositories r
+		ORDER BY r.full_name`
 	var repos []domain.Repository
-	err := r.db.SelectContext(ctx, &repos, "SELECT * FROM repositories ORDER BY full_name")
+	err := r.db.SelectContext(ctx, &repos, query)
 	if err != nil {
 		return nil, err
 	}
@@ -52,8 +57,14 @@ func (r *RepoRepository) GetAll(ctx context.Context) ([]domain.Repository, error
 }
 
 func (r *RepoRepository) GetBySourceID(ctx context.Context, sourceID int64) ([]domain.Repository, error) {
+	query := `SELECT r.*,
+		COALESCE((SELECT COUNT(*) FROM dependencies d WHERE d.repository_id = r.id), 0) as dependency_count,
+		COALESCE((SELECT COUNT(*) FROM dependencies d WHERE d.repository_id = r.id AND d.is_outdated = TRUE), 0) as outdated_count
+		FROM repositories r
+		WHERE r.source_id = ?
+		ORDER BY r.full_name`
 	var repos []domain.Repository
-	err := r.db.SelectContext(ctx, &repos, "SELECT * FROM repositories WHERE source_id = ? ORDER BY full_name", sourceID)
+	err := r.db.SelectContext(ctx, &repos, query, sourceID)
 	if err != nil {
 		return nil, err
 	}
