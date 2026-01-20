@@ -18,7 +18,7 @@ const containerStyle: CSSProperties = {
 const iconContainerStyle: CSSProperties = {
   width: '80px',
   height: '80px',
-  borderRadius: '50%',
+  borderRadius: 'var(--radius-full)',
   backgroundColor: 'var(--bg-secondary)',
   display: 'flex',
   alignItems: 'center',
@@ -40,8 +40,9 @@ const titleStyle: CSSProperties = {
 const descriptionStyle: CSSProperties = {
   color: 'var(--text-muted)',
   fontSize: '14px',
-  maxWidth: '320px',
+  maxWidth: '400px',
   lineHeight: 1.6,
+  whiteSpace: 'pre-line',
 };
 
 export function EmptyState({ icon, title, description, action }: Props) {

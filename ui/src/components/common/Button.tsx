@@ -11,42 +11,43 @@ const baseStyle: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontWeight: 500,
-  borderRadius: 'var(--radius-md)',
-  transition: 'all 0.15s ease',
+  fontWeight: 600,
+  borderRadius: 'var(--radius-full)',
+  transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
   cursor: 'pointer',
   border: 'none',
   outline: 'none',
   gap: '8px',
+  letterSpacing: '-0.01em',
 };
 
 const variantStyles: Record<NonNullable<Props['variant']>, CSSProperties> = {
   primary: {
     background: 'var(--accent-gradient)',
     color: 'white',
-    boxShadow: '0 1px 2px 0 rgba(59, 130, 246, 0.3)',
+    boxShadow: '0 2px 8px -2px rgba(124, 181, 149, 0.4)',
   },
   secondary: {
     backgroundColor: 'var(--bg-card)',
     color: 'var(--text-primary)',
-    border: '1px solid var(--border-color)',
+    border: '1.5px solid var(--border-color)',
     boxShadow: 'var(--shadow-sm)',
   },
   danger: {
     backgroundColor: 'var(--danger)',
     color: 'white',
-    boxShadow: '0 1px 2px 0 rgba(239, 68, 68, 0.3)',
+    boxShadow: '0 2px 8px -2px rgba(212, 132, 122, 0.4)',
   },
   ghost: {
     backgroundColor: 'transparent',
-    color: 'var(--text-muted)',
+    color: 'var(--text-secondary)',
   },
 };
 
 const sizeStyles: Record<NonNullable<Props['size']>, CSSProperties> = {
-  sm: { padding: '6px 12px', fontSize: '13px' },
-  md: { padding: '10px 18px', fontSize: '14px' },
-  lg: { padding: '12px 24px', fontSize: '15px' },
+  sm: { padding: '8px 16px', fontSize: '13px' },
+  md: { padding: '12px 22px', fontSize: '14px' },
+  lg: { padding: '14px 28px', fontSize: '15px' },
 };
 
 export function Button({
@@ -65,14 +66,15 @@ export function Button({
   const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (!isDisabled) {
       if (variant === 'primary') {
-        e.currentTarget.style.transform = 'translateY(-1px)';
-        e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(59, 130, 246, 0.4)';
+        e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)';
+        e.currentTarget.style.boxShadow = '0 8px 20px -4px rgba(124, 181, 149, 0.5)';
       } else if (variant === 'secondary') {
         e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-        e.currentTarget.style.borderColor = 'var(--text-muted)';
-      } else if (variant === 'danger') {
+        e.currentTarget.style.borderColor = 'var(--accent)';
         e.currentTarget.style.transform = 'translateY(-1px)';
-        e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(239, 68, 68, 0.4)';
+      } else if (variant === 'danger') {
+        e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)';
+        e.currentTarget.style.boxShadow = '0 8px 20px -4px rgba(212, 132, 122, 0.5)';
       } else if (variant === 'ghost') {
         e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
         e.currentTarget.style.color = 'var(--text-primary)';
@@ -84,17 +86,18 @@ export function Button({
   const handleMouseLeave = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (!isDisabled) {
       if (variant === 'primary') {
-        e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.boxShadow = '0 1px 2px 0 rgba(59, 130, 246, 0.3)';
+        e.currentTarget.style.transform = 'translateY(0) scale(1)';
+        e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(124, 181, 149, 0.4)';
       } else if (variant === 'secondary') {
         e.currentTarget.style.backgroundColor = 'var(--bg-card)';
         e.currentTarget.style.borderColor = 'var(--border-color)';
-      } else if (variant === 'danger') {
         e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.boxShadow = '0 1px 2px 0 rgba(239, 68, 68, 0.3)';
+      } else if (variant === 'danger') {
+        e.currentTarget.style.transform = 'translateY(0) scale(1)';
+        e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(212, 132, 122, 0.4)';
       } else if (variant === 'ghost') {
         e.currentTarget.style.backgroundColor = 'transparent';
-        e.currentTarget.style.color = 'var(--text-muted)';
+        e.currentTarget.style.color = 'var(--text-secondary)';
       }
     }
     onMouseLeave?.(e);

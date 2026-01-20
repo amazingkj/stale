@@ -12,7 +12,8 @@ export function Table({ children, style, fixed }: TableProps) {
     <div style={{ overflowX: 'auto' }}>
       <table style={{
         width: '100%',
-        borderCollapse: 'collapse',
+        borderCollapse: 'separate',
+        borderSpacing: 0,
         tableLayout: fixed ? 'fixed' : 'auto',
         ...style,
       }}>
@@ -38,8 +39,9 @@ export function TableRow({ children, onClick, style }: { children: ReactNode; on
   return (
     <tr
       style={{
-        borderBottom: '1px solid var(--border-color)',
+        borderBottom: '1px solid var(--border-light)',
         cursor: onClick ? 'pointer' : 'default',
+        transition: 'background-color 0.2s ease',
         ...style,
       }}
       onClick={onClick}

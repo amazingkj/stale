@@ -277,16 +277,17 @@ export function Dashboard() {
       {/* Scan Progress */}
       {currentScan && (currentScan.status === 'pending' || currentScan.status === 'running') && (
         <div style={{
-          padding: '12px 16px',
-          borderRadius: '8px',
-          backgroundColor: 'var(--accent)',
+          padding: '14px 20px',
+          borderRadius: 'var(--radius-lg)',
+          background: 'var(--accent-gradient)',
           color: 'white',
           fontSize: '14px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          boxShadow: '0 4px 16px -4px rgba(124, 181, 149, 0.4)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 500 }}>
             <LoadingSpinner size="sm" />
             {currentScan.status === 'pending'
               ? 'Starting scan...'
@@ -298,11 +299,15 @@ export function Dashboard() {
               background: 'rgba(255,255,255,0.2)',
               border: 'none',
               color: 'white',
-              padding: '4px 12px',
-              borderRadius: '4px',
+              padding: '6px 14px',
+              borderRadius: 'var(--radius-full)',
               cursor: 'pointer',
               fontSize: '13px',
+              fontWeight: 600,
+              transition: 'background 0.2s ease',
             }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
           >
             Cancel
           </button>
@@ -310,11 +315,14 @@ export function Dashboard() {
       )}
 
       {/* Stats Grid */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-        gap: '16px',
-      }}>
+      <div
+        className="animate-stagger"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+          gap: '18px',
+        }}
+      >
         <StatCard
           label="Total"
           value={stats.total_dependencies}
@@ -387,7 +395,7 @@ export function Dashboard() {
             icon={stats.total_dependencies === 0 ? '📦' : undefined}
             description={
               stats.total_dependencies === 0
-                ? 'No dependencies found. Add a source and scan to get started.'
+                ? 'No dependencies found.\nAdd a source and scan to get started.'
                 : search
                   ? 'No dependencies matching your search.'
                   : 'No dependencies in this category.'

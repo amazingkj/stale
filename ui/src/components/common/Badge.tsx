@@ -10,13 +10,14 @@ interface Props {
 }
 
 const baseStyle: CSSProperties = {
-  padding: '3px 6px',
-  borderRadius: '4px',
+  padding: '4px 10px',
+  borderRadius: 'var(--radius-full)',
   fontSize: '11px',
-  fontWeight: 500,
+  fontWeight: 600,
   display: 'inline-flex',
   alignItems: 'center',
-  gap: '3px',
+  gap: '4px',
+  letterSpacing: '0.01em',
 };
 
 export function Badge({ children, color = 'muted', style }: Props) {
@@ -45,7 +46,7 @@ export function EcosystemBadge({ ecosystem }: { ecosystem: string }) {
   const { color, label } = config[ecosystem] || { color: 'muted', label: ecosystem };
 
   return (
-    <Badge color={color} style={{ fontSize: '10px', fontWeight: 600, padding: '3px 6px' }}>
+    <Badge color={color} style={{ fontSize: '10px', fontWeight: 700, padding: '3px 8px' }}>
       {label}
     </Badge>
   );
@@ -55,7 +56,7 @@ export function TypeBadge({ type }: { type: 'dependency' | 'devDependency' }) {
   return (
     <Badge
       color={type === 'dependency' ? 'warning' : 'muted'}
-      style={{ fontSize: '10px' }}
+      style={{ fontSize: '10px', padding: '3px 8px' }}
     >
       {type === 'dependency' ? 'prod' : 'dev'}
     </Badge>
@@ -74,7 +75,7 @@ export function VersionBadge({ version, isOutdated }: { version: string; isOutda
         fontSize: '11px',
         fontWeight: 600,
         letterSpacing: '0.3px',
-        padding: '4px 8px',
+        padding: '5px 10px',
       }}
     >
       {version || '-'}
@@ -98,9 +99,9 @@ export function VersionDiffBadge({ diffType }: { diffType: VersionDiffType }) {
       color={color}
       style={{
         fontSize: '9px',
-        fontWeight: 600,
-        padding: '2px 5px',
-        marginLeft: '4px',
+        fontWeight: 700,
+        padding: '2px 6px',
+        marginLeft: '6px',
       }}
     >
       {label}

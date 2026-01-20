@@ -4,20 +4,20 @@ import type { CSSProperties } from 'react';
  * Table header cell styles
  */
 export const tableHeaderStyle: CSSProperties = {
-  padding: '10px 16px',
+  padding: '14px 18px',
   textAlign: 'left',
   fontSize: '11px',
-  fontWeight: 600,
+  fontWeight: 700,
   color: 'var(--text-muted)',
   textTransform: 'uppercase',
-  letterSpacing: '0.5px',
+  letterSpacing: '0.6px',
 };
 
 /**
  * Table body cell styles
  */
 export const tableCellStyle: CSSProperties = {
-  padding: '12px 16px',
+  padding: '14px 18px',
   fontSize: '13px',
   color: 'var(--text-primary)',
 };
@@ -27,54 +27,58 @@ export const tableCellStyle: CSSProperties = {
  */
 export const inputStyle: CSSProperties = {
   width: '100%',
-  padding: '8px 10px',
-  borderRadius: '6px',
-  border: '1px solid var(--border-color)',
+  padding: '10px 14px',
+  borderRadius: 'var(--radius-md)',
+  border: '1.5px solid var(--border-color)',
   backgroundColor: 'var(--bg-card)',
   color: 'var(--text-primary)',
   fontSize: '13px',
   outline: 'none',
   boxSizing: 'border-box',
+  transition: 'all 0.2s ease',
 };
 
 /**
  * Select dropdown styles
  */
 export const selectStyle: CSSProperties = {
-  padding: '8px 10px',
-  borderRadius: '6px',
-  border: '1px solid var(--border-color)',
+  padding: '10px 14px',
+  borderRadius: 'var(--radius-md)',
+  border: '1.5px solid var(--border-color)',
   backgroundColor: 'var(--bg-card)',
   color: 'var(--text-primary)',
   fontSize: '13px',
   outline: 'none',
   cursor: 'pointer',
+  transition: 'all 0.2s ease',
 };
 
 /**
  * Primary button styles
  */
 export const primaryButtonStyle: CSSProperties = {
-  padding: '8px 16px',
-  borderRadius: '6px',
+  padding: '10px 20px',
+  borderRadius: 'var(--radius-full)',
   border: 'none',
-  backgroundColor: 'var(--accent)',
+  background: 'var(--accent-gradient)',
   color: 'white',
   fontSize: '13px',
-  fontWeight: 500,
+  fontWeight: 600,
   cursor: 'pointer',
+  boxShadow: '0 2px 8px -2px rgba(124, 181, 149, 0.4)',
 };
 
 /**
  * Secondary button styles
  */
 export const secondaryButtonStyle: CSSProperties = {
-  padding: '8px 14px',
-  borderRadius: '6px',
-  border: '1px solid var(--border-color)',
+  padding: '10px 18px',
+  borderRadius: 'var(--radius-full)',
+  border: '1.5px solid var(--border-color)',
   backgroundColor: 'var(--bg-card)',
   color: 'var(--text-primary)',
   fontSize: '13px',
+  fontWeight: 500,
   cursor: 'pointer',
 };
 
@@ -83,8 +87,9 @@ export const secondaryButtonStyle: CSSProperties = {
  */
 export const cardStyle: CSSProperties = {
   backgroundColor: 'var(--bg-card)',
-  borderRadius: '10px',
-  border: '1px solid var(--border-color)',
+  borderRadius: 'var(--radius-xl)',
+  border: 'none',
+  boxShadow: 'var(--shadow-md)',
   overflow: 'hidden',
 };
 
@@ -92,11 +97,12 @@ export const cardStyle: CSSProperties = {
  * Error message styles
  */
 export const errorStyle: CSSProperties = {
-  padding: '10px 14px',
-  borderRadius: '6px',
+  padding: '12px 16px',
+  borderRadius: 'var(--radius-md)',
   backgroundColor: 'var(--danger-bg)',
   color: 'var(--danger-text)',
   fontSize: '13px',
+  fontWeight: 500,
 };
 
 /**
@@ -116,8 +122,8 @@ export const badgeColors = {
     color: 'var(--danger-text)',
   },
   accent: {
-    backgroundColor: 'var(--accent)',
-    color: 'white',
+    backgroundColor: 'var(--accent-light)',
+    color: 'var(--accent)',
   },
   muted: {
     backgroundColor: 'var(--bg-hover)',
@@ -133,7 +139,7 @@ export const badgeColors = {
  * Stat card color configurations
  */
 export const statCardColors = {
-  accent: { bg: 'var(--bg-hover)', text: 'var(--accent)' },
+  accent: { bg: 'var(--accent-light)', text: 'var(--accent)' },
   success: { bg: 'var(--success-bg)', text: 'var(--success-text)' },
   warning: { bg: 'var(--warning-bg)', text: 'var(--warning-text)' },
   danger: { bg: 'var(--danger-bg)', text: 'var(--danger-text)' },
