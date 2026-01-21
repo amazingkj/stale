@@ -69,7 +69,9 @@ func (s *Scheduler) Start() {
 }
 
 func (s *Scheduler) ReloadSchedule() {
-	ctx := context.Background()
+	// Use timeout context for settings load to prevent blocking
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	settings, err := s.settingsRepo.Get(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to load settings for scheduler")
@@ -123,7 +125,9 @@ func (s *Scheduler) OnScanComplete(callback func()) {
 
 func (s *Scheduler) notifyScanComplete() {
 	s.mu.Lock()
-	callbacks := s.onScanComplete
+	// Make explicit copy to safely iterate outside the lock
+	callbacks := make([]func(), len(s.onScanComplete))
+	copy(callbacks, s.onScanComplete)
 	s.mu.Unlock()
 	for _, cb := range callbacks {
 		cb()
@@ -238,7 +242,20 @@ func (s *Scheduler) TriggerScan(ctx context.Context, sourceID *int64) (*domain.S
 	s.runningJobID = &scan.ID
 	s.mu.Unlock()
 
-	go s.runScan(scan.ID, sourceID)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error().Interface("panic", r).Int64("scan_id", scan.ID).Msg("panic in scan goroutine")
+				s.mu.Lock()
+				s.runningJobID = nil
+				s.mu.Unlock()
+				_ = s.scanRepo.UpdateStatus(context.Background(), scan.ID, domain.ScanStatusFailed, errors.New("scan panicked"))
+				// Still notify callbacks for cache invalidation etc.
+				s.notifyScanComplete()
+			}
+		}()
+		s.runScan(scan.ID, sourceID)
+	}()
 
 	return scan, nil
 }

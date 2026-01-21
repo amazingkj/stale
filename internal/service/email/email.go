@@ -154,7 +154,8 @@ func (s *Service) sendMail(settings *domain.Settings, subject, body string) erro
 
 // sendMailSTARTTLS sends email using STARTTLS (port 587)
 func (s *Service) sendMailSTARTTLS(settings *domain.Settings, recipients []string, msg []byte) error {
-	addr := fmt.Sprintf("%s:%d", settings.EmailSMTPHost, settings.EmailSMTPPort)
+	// Use net.JoinHostPort for proper IPv6 support (e.g., [::1]:587)
+	addr := net.JoinHostPort(settings.EmailSMTPHost, fmt.Sprintf("%d", settings.EmailSMTPPort))
 
 	// Connect to the SMTP server
 	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)

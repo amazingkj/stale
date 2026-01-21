@@ -3,6 +3,7 @@ package database
 import (
 	"embed"
 	"fmt"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
@@ -48,9 +49,16 @@ func Migrate(db *sqlx.DB) error {
 
 		_, err = db.Exec(string(migrationSQL))
 		if err != nil {
-			// Ignore "duplicate column" errors for ALTER TABLE statements
-			// This allows migrations to be re-run safely
-			continue
+			// Only ignore specific expected errors that occur when re-running migrations
+			errStr := strings.ToLower(err.Error())
+			isExpectedError := strings.Contains(errStr, "already exists") ||
+				strings.Contains(errStr, "duplicate column") ||
+				strings.Contains(errStr, "table") && strings.Contains(errStr, "exists")
+
+			if !isExpectedError {
+				return fmt.Errorf("migration %s failed: %w", file, err)
+			}
+			// Expected error (table/column already exists) - continue to next migration
 		}
 	}
 

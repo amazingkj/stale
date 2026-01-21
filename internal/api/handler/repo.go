@@ -110,7 +110,19 @@ type BulkDeleteRequest struct {
 	IDs []int64 `json:"ids"`
 }
 
+type BulkDeleteError struct {
+	ID    int64  `json:"id"`
+	Error string `json:"error"`
+}
+
+type BulkDeleteResponse struct {
+	Deleted int               `json:"deleted"`
+	Failed  int               `json:"failed"`
+	Errors  []BulkDeleteError `json:"errors,omitempty"`
+}
+
 func (h *RepoHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {
+	LimitBody(r)
 	var req BulkDeleteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		RespondBadRequest(w, "invalid request body")
@@ -123,21 +135,33 @@ func (h *RepoHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	var deleted int
+	response := BulkDeleteResponse{
+		Errors: []BulkDeleteError{},
+	}
 
 	for _, id := range req.IDs {
 		// Delete dependencies first
 		if err := h.depRepo.DeleteByRepoID(ctx, id); err != nil {
+			response.Failed++
+			response.Errors = append(response.Errors, BulkDeleteError{
+				ID:    id,
+				Error: "failed to delete dependencies: " + err.Error(),
+			})
 			continue
 		}
 
 		// Delete repository
 		if err := h.repo.Delete(ctx, id); err != nil {
+			response.Failed++
+			response.Errors = append(response.Errors, BulkDeleteError{
+				ID:    id,
+				Error: "failed to delete repository: " + err.Error(),
+			})
 			continue
 		}
-		deleted++
+		response.Deleted++
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]int{"deleted": deleted})
+	json.NewEncoder(w).Encode(response)
 }

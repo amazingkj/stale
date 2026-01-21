@@ -31,6 +31,7 @@ func (h *IgnoredHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *IgnoredHandler) Create(w http.ResponseWriter, r *http.Request) {
+	LimitBody(r)
 	var input domain.IgnoredDependencyInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -69,6 +70,7 @@ func (h *IgnoredHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 // BulkCreate adds multiple dependencies to the ignore list
 func (h *IgnoredHandler) BulkCreate(w http.ResponseWriter, r *http.Request) {
+	LimitBody(r)
 	var input struct {
 		Items []domain.IgnoredDependencyInput `json:"items"`
 	}
@@ -83,29 +85,35 @@ func (h *IgnoredHandler) BulkCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var created []domain.IgnoredDependency
-	var errors []string
+	var skipped int
+	var duplicates int
 
+	ctx := r.Context()
 	for _, item := range input.Items {
 		if item.Name == "" {
+			skipped++
 			continue
 		}
-		ignored, err := h.repo.Create(r.Context(), &item)
+		ignored, err := h.repo.Create(ctx, &item)
 		if err != nil {
-			// Skip duplicates silently
-			errors = append(errors, item.Name+": "+err.Error())
+			// Count duplicates separately (UNIQUE constraint violation)
+			duplicates++
 			continue
 		}
 		created = append(created, *ignored)
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"created": len(created),
-		"items":   created,
+		"created":    len(created),
+		"skipped":    skipped,
+		"duplicates": duplicates,
+		"items":      created,
 	})
 }
 
 // BulkDelete removes multiple dependencies from the ignore list
 func (h *IgnoredHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {
+	LimitBody(r)
 	var input struct {
 		IDs []int64 `json:"ids"`
 	}
@@ -120,13 +128,18 @@ func (h *IgnoredHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var deleted int
+	var failed int
+	ctx := r.Context()
 	for _, id := range input.IDs {
-		if err := h.repo.Delete(r.Context(), id); err == nil {
+		if err := h.repo.Delete(ctx, id); err == nil {
 			deleted++
+		} else {
+			failed++
 		}
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"deleted": deleted,
+		"failed":  failed,
 	})
 }

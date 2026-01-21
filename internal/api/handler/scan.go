@@ -26,10 +26,11 @@ type TriggerScanRequest struct {
 }
 
 func (h *ScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
+	LimitBody(r)
 	var req TriggerScanRequest
 	if r.ContentLength > 0 {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			RespondBadRequest(w, "invalid request body")
 			return
 		}
 	}
@@ -37,10 +38,10 @@ func (h *ScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 	scan, err := h.scheduler.TriggerScan(r.Context(), req.SourceID)
 	if err != nil {
 		if errors.Is(err, scheduler.ErrScanAlreadyRunning) {
-			http.Error(w, err.Error(), http.StatusConflict)
+			RespondError(w, http.StatusConflict, "a scan is already running", nil)
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 
@@ -51,7 +52,7 @@ func (h *ScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 func (h *ScanHandler) List(w http.ResponseWriter, r *http.Request) {
 	scans, err := h.repo.GetAll(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 	if scans == nil {
@@ -63,13 +64,13 @@ func (h *ScanHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *ScanHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		RespondBadRequest(w, "invalid id")
 		return
 	}
 
 	scan, err := h.repo.GetByID(r.Context(), id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		RespondNotFound(w, "scan not found")
 		return
 	}
 	json.NewEncoder(w).Encode(scan)
@@ -91,26 +92,26 @@ func (h *ScanHandler) GetRunning(w http.ResponseWriter, r *http.Request) {
 func (h *ScanHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		RespondBadRequest(w, "invalid id")
 		return
 	}
 
 	// Get the scan first to check status
 	scan, err := h.repo.GetByID(r.Context(), id)
 	if err != nil {
-		http.Error(w, "scan not found", http.StatusNotFound)
+		RespondNotFound(w, "scan not found")
 		return
 	}
 
 	// Only cancel pending or running scans
 	if scan.Status != domain.ScanStatusPending && scan.Status != domain.ScanStatusRunning {
-		http.Error(w, "scan is already completed or failed", http.StatusBadRequest)
+		RespondBadRequest(w, "scan is already completed or failed")
 		return
 	}
 
 	// Mark as failed with cancelled message
 	if err := h.repo.UpdateStatus(r.Context(), id, domain.ScanStatusFailed, errors.New("cancelled by user")); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 

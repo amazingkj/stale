@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -115,13 +116,32 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 // getClientIP extracts the client IP from the request
 func getClientIP(r *http.Request) string {
 	// Check X-Forwarded-For header first (for proxied requests)
+	// X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
+	// We use the first IP (original client) for rate limiting
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
+		ips := strings.Split(xff, ",")
+		if len(ips) > 0 {
+			clientIP := strings.TrimSpace(ips[0])
+			if clientIP != "" {
+				return clientIP
+			}
+		}
 	}
 	// Check X-Real-IP header
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
+		return strings.TrimSpace(xri)
 	}
-	// Fall back to RemoteAddr
-	return r.RemoteAddr
+	// Fall back to RemoteAddr (strip port if present)
+	addr := r.RemoteAddr
+	if idx := strings.LastIndex(addr, ":"); idx != -1 {
+		// Check if it's IPv6 with brackets
+		if strings.Contains(addr, "[") {
+			if bracketIdx := strings.LastIndex(addr, "]"); bracketIdx != -1 && idx > bracketIdx {
+				return addr[:idx]
+			}
+		} else {
+			return addr[:idx]
+		}
+	}
+	return addr
 }

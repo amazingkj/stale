@@ -7,6 +7,14 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// MaxBodySize is the maximum allowed request body size (1MB)
+const MaxBodySize = 1 << 20 // 1MB
+
+// LimitBody wraps the request body with a max bytes limit
+func LimitBody(r *http.Request) {
+	r.Body = http.MaxBytesReader(nil, r.Body, MaxBodySize)
+}
+
 // ErrorResponse represents a structured API error response
 type ErrorResponse struct {
 	Error   string `json:"error"`

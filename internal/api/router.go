@@ -18,11 +18,24 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// App holds the router and its dependencies for lifecycle management
+type App struct {
+	Router      *chi.Mux
+	rateLimiter *apimiddleware.RateLimiter
+}
+
+// Stop cleans up resources (call during shutdown)
+func (a *App) Stop() {
+	if a.rateLimiter != nil {
+		a.rateLimiter.Stop()
+	}
+}
+
 func NewRouter(
 	db *sqlx.DB,
 	scheduler *scheduler.Scheduler,
 	emailService *email.Service,
-) *chi.Mux {
+) *App {
 	r := chi.NewRouter()
 
 	// Middleware
@@ -124,7 +137,10 @@ func NewRouter(
 	// Serve embedded frontend
 	r.Get("/*", spaHandler())
 
-	return r
+	return &App{
+		Router:      r,
+		rateLimiter: rateLimiter,
+	}
 }
 
 func spaHandler() http.HandlerFunc {

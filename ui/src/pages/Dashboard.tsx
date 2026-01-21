@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { getPackageUrl } from '../utils';
@@ -134,33 +134,54 @@ export function Dashboard() {
     loadData();
   }, [loadData]);
 
+  // Use ref to track polling interval for exponential backoff
+  const pollIntervalRef = useRef(2000); // Start at 2 seconds
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (!currentScan || currentScan.status === 'completed' || currentScan.status === 'failed') {
+      pollIntervalRef.current = 2000; // Reset interval when scan is done
       return;
     }
 
-    // Poll every 3 seconds during active scan - balances responsiveness with resource usage
-    const interval = setInterval(async () => {
+    // Poll with exponential backoff (2s -> 4s -> 8s -> max 15s)
+    const poll = async () => {
       try {
         const scan = await api.getScan(currentScan.id);
         setCurrentScan(scan);
         if (scan.status === 'completed') {
           setScanning(false);
+          pollIntervalRef.current = 2000; // Reset
           if (scan.repos_found === 0) {
             setError('Scan completed but no repositories with manifest files were found. Check your sources configuration.');
           }
           loadData();
+          return;
         } else if (scan.status === 'failed') {
           setScanning(false);
+          pollIntervalRef.current = 2000; // Reset
           setError(scan.error || 'Scan failed');
           loadData();
+          return;
         }
+        // Increase interval with exponential backoff, max 15 seconds
+        pollIntervalRef.current = Math.min(pollIntervalRef.current * 1.5, 15000);
       } catch {
-        // Ignore polling errors
+        // On error, slow down polling more aggressively
+        pollIntervalRef.current = Math.min(pollIntervalRef.current * 2, 15000);
       }
-    }, 3000);
+      // Schedule next poll
+      pollTimeoutRef.current = setTimeout(poll, pollIntervalRef.current);
+    };
 
-    return () => clearInterval(interval);
+    // Start polling
+    pollTimeoutRef.current = setTimeout(poll, pollIntervalRef.current);
+
+    return () => {
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+      }
+    };
   }, [currentScan, loadData]);
 
   const handleScan = useCallback(async () => {

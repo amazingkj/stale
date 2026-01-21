@@ -1,10 +1,11 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jiin/stale/internal/domain"
@@ -51,6 +52,7 @@ func (h *SourceHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SourceHandler) Create(w http.ResponseWriter, r *http.Request) {
+	LimitBody(r)
 	var input domain.SourceInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		RespondBadRequest(w, "invalid request body")
@@ -62,26 +64,48 @@ func (h *SourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate and normalize type
 	if input.Type == "" {
 		input.Type = "github"
 	}
+	input.Type = strings.ToLower(input.Type)
+	if input.Type != "github" && input.Type != "gitlab" {
+		RespondBadRequest(w, "type must be 'github' or 'gitlab'")
+		return
+	}
 
-	// Validate token based on source type
+	// Validate organization name (prevent injection)
+	if input.Organization != "" && len(input.Organization) > 100 {
+		RespondBadRequest(w, "organization name too long")
+		return
+	}
+
+	// Validate GitLab URL if provided
+	if input.Type == "gitlab" && input.URL != "" {
+		parsedURL, err := url.Parse(input.URL)
+		if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+			RespondBadRequest(w, "invalid GitLab URL")
+			return
+		}
+	}
+
+	// Validate token based on source type (use request context for proper timeout)
+	ctx := r.Context()
 	if input.Type == "gitlab" {
 		glClient := gitlab.New(input.Token, input.URL, input.Organization, input.InsecureSkipVerify, input.MembershipOnly)
-		if err := glClient.ValidateToken(context.Background()); err != nil {
+		if err := glClient.ValidateToken(ctx); err != nil {
 			RespondError(w, http.StatusBadRequest, "invalid token: unable to authenticate", err)
 			return
 		}
 	} else {
 		ghClient := github.New(input.Token, input.Organization, input.OwnerOnly)
-		if err := ghClient.ValidateToken(context.Background()); err != nil {
+		if err := ghClient.ValidateToken(ctx); err != nil {
 			RespondError(w, http.StatusBadRequest, "invalid token: unable to authenticate", err)
 			return
 		}
 	}
 
-	source, err := h.repo.Create(r.Context(), input)
+	source, err := h.repo.Create(ctx, input)
 	if err != nil {
 		RespondInternalError(w, err)
 		return
@@ -126,6 +150,7 @@ func (h *SourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	LimitBody(r)
 	var input domain.SourceInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		RespondBadRequest(w, "invalid request body")
@@ -137,26 +162,48 @@ func (h *SourceHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate and normalize type
 	if input.Type == "" {
 		input.Type = "github"
 	}
+	input.Type = strings.ToLower(input.Type)
+	if input.Type != "github" && input.Type != "gitlab" {
+		RespondBadRequest(w, "type must be 'github' or 'gitlab'")
+		return
+	}
 
-	// Validate token based on source type
+	// Validate organization name (prevent injection)
+	if input.Organization != "" && len(input.Organization) > 100 {
+		RespondBadRequest(w, "organization name too long")
+		return
+	}
+
+	// Validate GitLab URL if provided
+	if input.Type == "gitlab" && input.URL != "" {
+		parsedURL, err := url.Parse(input.URL)
+		if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+			RespondBadRequest(w, "invalid GitLab URL")
+			return
+		}
+	}
+
+	// Validate token based on source type (use request context for proper timeout)
+	ctx := r.Context()
 	if input.Type == "gitlab" {
 		glClient := gitlab.New(input.Token, input.URL, input.Organization, input.InsecureSkipVerify, input.MembershipOnly)
-		if err := glClient.ValidateToken(context.Background()); err != nil {
+		if err := glClient.ValidateToken(ctx); err != nil {
 			RespondError(w, http.StatusBadRequest, "invalid token: unable to authenticate", err)
 			return
 		}
 	} else {
 		ghClient := github.New(input.Token, input.Organization, input.OwnerOnly)
-		if err := ghClient.ValidateToken(context.Background()); err != nil {
+		if err := ghClient.ValidateToken(ctx); err != nil {
 			RespondError(w, http.StatusBadRequest, "invalid token: unable to authenticate", err)
 			return
 		}
 	}
 
-	source, err := h.repo.Update(r.Context(), id, input)
+	source, err := h.repo.Update(ctx, id, input)
 	if err != nil {
 		RespondInternalError(w, err)
 		return

@@ -91,7 +91,9 @@ func TestRespondBadRequest(t *testing.T) {
 	}
 
 	var response ErrorResponse
-	json.Unmarshal(w.Body.Bytes(), &response)
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
 	if response.Message != "invalid data" {
 		t.Errorf("Response.Message = %q, want %q", response.Message, "invalid data")
 	}
@@ -115,7 +117,9 @@ func TestRespondInternalError(t *testing.T) {
 	}
 
 	var response ErrorResponse
-	json.Unmarshal(w.Body.Bytes(), &response)
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
 	// Internal error message should be generic
 	if response.Message != "An internal error occurred" {
 		t.Errorf("Response.Message = %q, want generic message", response.Message)

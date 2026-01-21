@@ -2,18 +2,103 @@ import type { Source, SourceInput, Repository, Dependency, ScanJob, DependencySt
 
 const API_BASE = '/api/v1';
 
+// Custom error class with HTTP status information
+export class ApiError extends Error {
+  status: number;
+  statusText: string;
+
+  constructor(message: string, status: number, statusText: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.statusText = statusText;
+  }
+
+  get isUnauthorized(): boolean {
+    return this.status === 401;
+  }
+
+  get isForbidden(): boolean {
+    return this.status === 403;
+  }
+
+  get isNotFound(): boolean {
+    return this.status === 404;
+  }
+
+  get isRateLimited(): boolean {
+    return this.status === 429;
+  }
+
+  get isServerError(): boolean {
+    return this.status >= 500;
+  }
+}
+
+// Get user-friendly error message based on status
+function getErrorMessage(status: number, statusText: string, responseText: string): string {
+  // Try to parse JSON error response
+  if (responseText) {
+    try {
+      const json = JSON.parse(responseText);
+      if (json.error || json.message) {
+        return json.error || json.message;
+      }
+    } catch {
+      // Not JSON, use as-is if it's not HTML
+      if (!responseText.startsWith('<')) {
+        return responseText;
+      }
+    }
+  }
+
+  // Fallback to status-based messages
+  switch (status) {
+    case 400:
+      return 'Invalid request. Please check your input.';
+    case 401:
+      return 'Authentication required. Please check your API key.';
+    case 403:
+      return 'Access denied. You do not have permission for this action.';
+    case 404:
+      return 'Resource not found.';
+    case 429:
+      return 'Too many requests. Please wait a moment and try again.';
+    case 500:
+      return 'Server error. Please try again later.';
+    case 502:
+    case 503:
+    case 504:
+      return 'Service temporarily unavailable. Please try again later.';
+    default:
+      return statusText || `Request failed (${status})`;
+  }
+}
+
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    });
+  } catch (err) {
+    // Network error (offline, DNS failure, etc.)
+    throw new ApiError(
+      'Network error. Please check your connection.',
+      0,
+      'Network Error'
+    );
+  }
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `API Error: ${response.statusText}`);
+    const message = getErrorMessage(response.status, response.statusText, text);
+    throw new ApiError(message, response.status, response.statusText);
   }
 
   if (response.status === 204) {

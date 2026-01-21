@@ -267,6 +267,13 @@ func (s *Scanner) scanSource(ctx context.Context, source domain.Source, scanID i
 		results := make(chan manifestResult, len(manifestPaths))
 		for _, path := range manifestPaths {
 			go func(p string) {
+				// Recover from panics to prevent server crash
+				defer func() {
+					if r := recover(); r != nil {
+						log.Error().Interface("panic", r).Str("repo", repo.FullName).Str("path", p).Msg("panic in manifest fetch goroutine")
+						results <- manifestResult{p, nil}
+					}
+				}()
 				content, err := provider.GetFileContent(ctx, repo.FullName, p, scanBranch)
 				if err != nil {
 					log.Debug().Err(err).Str("repo", repo.FullName).Str("path", p).Msg("failed to fetch manifest")
@@ -388,6 +395,11 @@ func (s *Scanner) processNpmDependencies(ctx context.Context, repoID int64, deps
 		wg.Add(1)
 		go func(name, version string) {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Error().Interface("panic", r).Str("dep", name).Msg("panic in npm dependency processing")
+				}
+			}()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
@@ -441,6 +453,11 @@ func (s *Scanner) processMavenDependencies(ctx context.Context, repoID int64, po
 		wg.Add(1)
 		go func(groupID, artifactID, version, scope string) {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Error().Interface("panic", r).Str("groupId", groupID).Str("artifactId", artifactID).Msg("panic in maven dependency processing")
+				}
+			}()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
@@ -504,6 +521,11 @@ func (s *Scanner) processGradleDependencies(ctx context.Context, repoID int64, c
 		wg.Add(1)
 		go func(d GradleDependency) {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Error().Interface("panic", r).Str("dep", d.Group+":"+d.Name).Msg("panic in gradle dependency processing")
+				}
+			}()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
@@ -590,6 +612,11 @@ func (s *Scanner) processGoDependencies(ctx context.Context, repoID int64, conte
 		wg.Add(1)
 		go func(d GoModDependency) {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Error().Interface("panic", r).Str("dep", d.Path).Msg("panic in go dependency processing")
+				}
+			}()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 

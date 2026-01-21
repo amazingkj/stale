@@ -64,12 +64,12 @@ func main() {
 	go schedulerService.Start()
 
 	// Initialize router
-	router := api.NewRouter(db, schedulerService, emailService)
+	app := api.NewRouter(db, schedulerService, emailService)
 
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      router,
+		Handler:      app.Router,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -92,6 +92,9 @@ func main() {
 
 	// Stop scheduler
 	schedulerService.Stop()
+
+	// Stop rate limiter cleanup goroutine
+	app.Stop()
 
 	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

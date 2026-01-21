@@ -181,15 +181,30 @@ func TestGetClientIP(t *testing.T) {
 			expected:   "203.0.113.195",
 		},
 		{
-			name:       "RemoteAddr",
+			name:       "RemoteAddr with port",
 			remoteAddr: "192.168.1.1:12345",
-			expected:   "192.168.1.1:12345",
+			expected:   "192.168.1.1",
+		},
+		{
+			name:       "RemoteAddr without port",
+			remoteAddr: "192.168.1.1",
+			expected:   "192.168.1.1",
+		},
+		{
+			name:       "RemoteAddr IPv6 with port",
+			remoteAddr: "[::1]:12345",
+			expected:   "[::1]",
 		},
 		{
 			name:       "XFF takes priority",
 			xff:        "203.0.113.195",
 			xri:        "10.0.0.1",
 			remoteAddr: "192.168.1.1:12345",
+			expected:   "203.0.113.195",
+		},
+		{
+			name:       "XFF with multiple IPs",
+			xff:        "203.0.113.195, 70.41.3.18, 150.172.238.178",
 			expected:   "203.0.113.195",
 		},
 	}

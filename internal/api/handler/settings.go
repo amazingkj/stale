@@ -33,7 +33,7 @@ func NewSettingsHandler(
 func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	settings, err := h.repo.Get(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 
@@ -46,6 +46,7 @@ func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
+	LimitBody(r)
 	var input domain.SettingsInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -56,7 +57,7 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if input.ScheduleCron != nil {
 		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 		if _, err := parser.Parse(*input.ScheduleCron); err != nil {
-			http.Error(w, "invalid cron expression: "+err.Error(), http.StatusBadRequest)
+			RespondBadRequest(w, "invalid cron expression")
 			return
 		}
 	}
@@ -67,7 +68,7 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.repo.Update(r.Context(), &input); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 
@@ -79,7 +80,7 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// Return updated settings
 	settings, err := h.repo.Get(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 
@@ -94,17 +95,17 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *SettingsHandler) TestEmail(w http.ResponseWriter, r *http.Request) {
 	settings, err := h.repo.Get(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 
 	if settings.EmailSMTPHost == "" {
-		http.Error(w, "SMTP host not configured", http.StatusBadRequest)
+		RespondBadRequest(w, "SMTP host not configured")
 		return
 	}
 
 	if err := h.emailService.TestConnection(settings); err != nil {
-		http.Error(w, "Failed to send test email: "+err.Error(), http.StatusInternalServerError)
+		RespondError(w, http.StatusInternalServerError, "Failed to send test email", err)
 		return
 	}
 
@@ -120,7 +121,7 @@ type NextScanResponse struct {
 func (h *SettingsHandler) GetNextScan(w http.ResponseWriter, r *http.Request) {
 	settings, err := h.repo.Get(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondInternalError(w, err)
 		return
 	}
 
