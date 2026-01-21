@@ -362,8 +362,8 @@ func (r *DependencyRepository) GetFilterOptions(ctx context.Context, repoFilter,
 		return nil, err
 	}
 
-	// Get available packages (filtered by repo, ecosystem, AND status)
-	// Packages should reflect what's available in the current filtered view
+	// Get available packages (filtered by repo and ecosystem only, NOT by status)
+	// This ensures package dropdown doesn't lose options when user changes status filter
 	pkgWhere := "1=1"
 	pkgArgs := []interface{}{}
 	if repoFilter != "" {
@@ -373,17 +373,6 @@ func (r *DependencyRepository) GetFilterOptions(ctx context.Context, repoFilter,
 	if ecosystemFilter != "" {
 		pkgWhere += " AND d.ecosystem = ?"
 		pkgArgs = append(pkgArgs, ecosystemFilter)
-	}
-	// Apply status filter only to packages
-	switch statusFilter {
-	case "upgradable":
-		pkgWhere += " AND d.is_outdated = TRUE"
-	case "uptodate":
-		pkgWhere += " AND d.is_outdated = FALSE"
-	case "prod":
-		pkgWhere += " AND d.type = 'dependency'"
-	case "dev":
-		pkgWhere += " AND d.type = 'devDependency'"
 	}
 
 	pkgQuery := `SELECT DISTINCT d.name FROM dependencies d

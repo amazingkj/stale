@@ -155,12 +155,6 @@ export function Dependencies() {
     return data.filter(dep => dep.name === selectedPackage);
   }, [paginatedData?.data, selectedPackage]);
 
-  // Reset package selection if it's no longer available in options
-  useEffect(() => {
-    if (selectedPackage !== 'all' && filterOptions.packages.length > 0 && !filterOptions.packages.includes(selectedPackage)) {
-      setSelectedPackage('all');
-    }
-  }, [filterOptions.packages, selectedPackage]);
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
